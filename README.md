@@ -1,12 +1,13 @@
 # Rijksmonumentenverkenner
 
-Facetzoek-prototype op het Nederlandse cultureel erfgoed van de Rijksdienst voor het Cultureel Erfgoed (RCE), zusje van de [Rijkscollectie Verkenner](../rijkscollectieverkenner) — zelfde patroon, andere ontologie (CEO/CHO in plaats van schema.org). Vier types op één schil: **Rijksmonumenten** (filter op monumentaard, juridische status, functie, provincie, gemeente, plaats, of zoek op naam/nummer), **Gezichten** en **Werelderfgoed** (filter op type, kaart toont de officiële (multi)polygoon), en **Complexen** (zoek op naam/complexnummer, klik door naar de rijksmonumenten die erbij horen). Resultaten als tabel of kaart (waar van toepassing), met doorklikbare facetwaarden en entity-pagina's. Zie [analyse.md](analyse.md) voor het volledige ontwerp.
+Facetzoek-prototype op het Nederlandse cultureel erfgoed van de Rijksdienst voor het Cultureel Erfgoed (RCE), zusje van de [Rijkscollectie Verkenner](../rijkscollectieverkenner) — zelfde patroon, andere ontologie (CEO/CHO in plaats van schema.org). Vier types op één schil: **Rijksmonumenten** (filter op monumentaard, juridische status, functie, provincie, gemeente, plaats, of zoek op naam/nummer), **Gezichten** en **Werelderfgoed** (filter op type en status, kaart toont de officiële (multi)polygoon), en **Complexen** (zoek op naam/complexnummer, klik door naar de rijksmonumenten die erbij horen). Resultaten als tabel of kaart (waar van toepassing). Elk veld met een onderliggende URI is doorklikbaar — geen platte tekst: facetwaarden openen een lijstpagina (`#/entity/...`), losse verwijzingen naar één specifiek record (zoals een complex' hoofdobject) openen een permalink-detailpagina (`#/record/...`). Rijksmonumenten en Complexen tonen ook hun officiële redengevende omschrijving, als die er is. Zie [analyse.md](analyse.md) voor het volledige ontwerp — inclusief een externe review en de daaruit voortgekomen fixes (§14: facetaantallen die niet-Rijksmonument objecten meetelden, dubbele Werelderfgoed-registraties).
 
 ```
 public/index.html          -- de hele app (HTML/CSS/JS, geen build)
 worker.js                  -- proxy-route /api/sparql
 wrangler.jsonc
 analyse.md                 -- ontwerpdocument (ontologie, valkuilen, bouwvolgorde)
+todo.md                    -- openstaande punten uit reviews en eigen ideeën
 ```
 
 Geen inlogscherm — anders dan de Rijkscollectie Verkenner (die auteursrechtelijk beschermde afbeeldingen toont) is dit prototype volledig open, net als de onderliggende data: de rijksmonumentenregistratie van de RCE is al publieke overheidsinformatie. Geen `SITE_USER`/`SITE_PASSWORD`, geen `RCE_TOKEN` nodig — het CHO-endpoint zelf is ook publiek toegankelijk (geverifieerd: een kale `curl` zonder `Authorization`-header krijgt gewoon een SPARQL-antwoord).

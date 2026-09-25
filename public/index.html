@@ -175,6 +175,7 @@
     color: var(--ink); text-align: left; cursor: pointer; width: 100%;
   }
   .row-toggle:hover { color: var(--gold); }
+  .rmnr-sub { display: block; font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; color: var(--muted); margin-top: 1px; }
 
   tr.detail-row td { background: var(--paper); padding: 16px; }
   .detail-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; margin: 0 0 4px; }
@@ -184,6 +185,10 @@
   .detail-grid dd { margin: 0; }
   .no-val { color: var(--muted); font-style: italic; }
   .register-link { display: inline-block; margin-top: 10px; font-family: var(--font-mono); font-size: 11.5px; }
+
+  .omschrijving { margin-top: 14px; max-width: 700px; }
+  .omschrijving h4 { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
+  .omschrijving p { font-size: 12.5px; line-height: 1.6; white-space: pre-line; margin: 0; }
 
   .pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 12px; }
   .pager button { font: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 6px 12px; cursor: pointer; color: var(--ink); }
@@ -625,12 +630,19 @@
   function buildSingleCountQuery(kind, id) {
     if (kind === 'monumentaard') return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { GRAPH <' + INSTANTIES_GRAPH + '> { ?rm ceo:heeftMonumentAard <' + id + '> . } }'].join('\n');
     if (kind === 'juridischeStatus') return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { GRAPH <' + INSTANTIES_GRAPH + '> { ?rm ceo:heeftJuridischeStatus <' + id + '> . } }'].join('\n');
-    // provincie
-    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { ?rm ceo:heeftBasisregistratieRelatie ?br . ?br ceo:heeftProvincie <' + id + '> . }'].join('\n');
+    // provincie -- ?rm a ceo:Rijksmonument IS required here (unlike monumentaard/juridischeStatus
+    // above): live-verified that heeftBasisregistratieRelatie/heeftProvincie is NOT exclusive to
+    // Rijksmonument -- ArcheologischOnderzoeksgebied and Vondstlocatie carry it too, and outnumber
+    // Rijksmonument in some provinces (e.g. Flevoland: 4052 raw vs 124 actual Rijksmonumenten --
+    // this was a real, reported bug: the facet showed 4052 while the filtered result was 124).
+    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { ?rm a ceo:Rijksmonument . ?rm ceo:heeftBasisregistratieRelatie ?br . ?br ceo:heeftProvincie <' + id + '> . }'].join('\n');
   }
 
-  // Search-only (no eager top-N load, see the performance note above). No `?rm a
-  // ceo:Rijksmonument` join -- heeftOorspronkelijkeFunctie/heeftGemeente already imply it.
+  // Search-only (no eager top-N load, see the performance note above). heeftOorspronkelijkeFunctie
+  // IS exclusive to Rijksmonument (live-verified, safe to omit the type-join) -- but
+  // heeftBasisregistratieRelatie (used for gemeente below, and plaats in buildPlaatsFacetQuery)
+  // is NOT, see the note on buildSingleCountQuery's provincie branch above, so gemeente keeps the
+  // `?rm a ceo:Rijksmonument` join even though functie doesn't need it.
   function buildFacetQuery(kind, searchTerm) {
     var needleFilter = 'FILTER(CONTAINS(LCASE(STR(?label)), "' + sparqlEsc(searchTerm.toLowerCase()) + '"))';
     if (kind === 'functie') {
@@ -652,6 +664,7 @@
     return [
       CEO_PREFIXES,
       'SELECT ?uri (SAMPLE(?label) AS ?labelL) (COUNT(DISTINCT ?rm) AS ?cnt) WHERE {',
+      '  ?rm a ceo:Rijksmonument .',
       '  ?rm ceo:heeftBasisregistratieRelatie ?br .',
       '  ?br ceo:heeftGemeente ?uri .',
       '  ?uri skos:prefLabel ?label .',
@@ -664,12 +677,16 @@
   }
 
   // Plaats is a plain literal (woonplaatsnaam), not a concept URI -- same shape as "maker"
-  // in the Rijkscollectie project. Search-only, same reasoning as buildFacetQuery above.
+  // in the Rijkscollectie project. Search-only, same reasoning as buildFacetQuery above --
+  // and the same `?rm a ceo:Rijksmonument` join is required here too (live-verified:
+  // ArcheologischOnderzoeksgebied/Vondstlocatie/ArcheologischTerrein also reach a woonplaatsnaam
+  // via heeftBasisregistratieRelatie -> heeftBAGRelatie, e.g. +2400 extra hits for Amsterdam).
   function buildPlaatsFacetQuery(searchTerm) {
     var needleFilter = 'FILTER(CONTAINS(LCASE(STR(?label)), "' + sparqlEsc(searchTerm.toLowerCase()) + '"))';
     return [
       CEO_PREFIXES,
       'SELECT ?label (COUNT(DISTINCT ?rm) AS ?cnt) WHERE {',
+      '  ?rm a ceo:Rijksmonument .',
       '  ?rm ceo:heeftBasisregistratieRelatie ?br .',
       '  ?br ceo:heeftBAGRelatie ?bag . ?bag ceo:woonplaatsnaam ?label .',
       '  ' + needleFilter,
@@ -686,7 +703,7 @@
       'SELECT ?rm (SAMPLE(?naam) AS ?naamL) (SAMPLE(?rmnr) AS ?rmnrL) (SAMPLE(?datum) AS ?datumL)',
       '  (SAMPLE(?aardPacked) AS ?aardPackedL) (SAMPLE(?statusPacked) AS ?statusPackedL) (SAMPLE(?functiePacked) AS ?functiePackedL)',
       '  (SAMPLE(?provPacked) AS ?provPackedL) (SAMPLE(?gemPacked) AS ?gemPackedL) (SAMPLE(?woonplaats) AS ?woonplaatsL) (SAMPLE(?adres) AS ?adresL)',
-      '  (SAMPLE(?complexPacked) AS ?complexPackedL) (SAMPLE(?complexNr) AS ?complexNrL)',
+      '  (SAMPLE(?complexPacked) AS ?complexPackedL) (SAMPLE(?complexNr) AS ?complexNrL) (SAMPLE(?omschrTekst) AS ?omschrijvingL)',
       'WHERE {',
       '  ' + valuesClause(ids),
       '  OPTIONAL { ?rm ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
@@ -729,6 +746,16 @@
       '    OPTIONAL { ?complex ceo:heeftNaam ?cNameObj . ?cNameObj ceo:naam ?complexNaam . }',
       '    OPTIONAL { ?complex ceo:complexnummer ?complexNr . }',
       '    BIND(' + packedPair('?complex', '?complexNaam') + ' AS ?complexPacked)',
+      '  }',
+      // Only the formally adopted description (formeelStandpunt=true) -- a monument can have
+      // several heeftOmschrijving nodes (drafts/revisions, live-verified up to 6), but at most
+      // one is formeel; if none is, this OPTIONAL simply stays unbound and the old, description-
+      // less detail view is shown unchanged, per instruction ("alleen als de boolean true is,
+      // anders is het oude tekst").
+      '  OPTIONAL {',
+      '    ?rm ceo:heeftOmschrijving ?omschrObj .',
+      '    ?omschrObj ceo:formeelStandpunt true .',
+      '    ?omschrObj ceo:omschrijving ?omschrTekst .',
       '  }',
       '}',
       'GROUP BY ?rm'
@@ -845,8 +872,17 @@
   // component records, each with its own geometry, deliberately shown separately rather
   // than merged). Same "just eager-load it" reasoning as Gezicht.
 
+  // Live-verified (reported via review): 6 of the 12 real-world UNESCO sites have TWO
+  // genuinely distinct ceo:Werelderfgoed records sharing the same werelderfgoednummer,
+  // identical name/status/type/UNESCO-link, and neither has its own geometry to tell them
+  // apart -- an upstream data characteristic (likely duplicate registrations), not a
+  // component-of-the-same-site situation as originally assumed in analyse.md §10/§11. Shown
+  // as two identical-looking rows this reads as a bug, so the browse list dedupes by
+  // werelderfgoednummer (picking one representative record per real-world site via SAMPLE)
+  // -- 12 rows instead of 18. `?w` itself needs no extra dedup query (?w a ceo:Werelderfgoed
+  // uses SELECT/COUNT DISTINCT already, see the note in §11 on the 954-vs-482 Gezicht effect).
   function wInnerWhere() {
-    var lines = ['?w a ceo:Werelderfgoed .'];
+    var lines = ['?w a ceo:Werelderfgoed .', '?w ceo:werelderfgoednummer ?nr .'];
     if (state.search) {
       lines.push('?w ceo:heeftNaam ?nObjW . ?nObjW ceo:naam ?naamW .');
       lines.push('FILTER(CONTAINS(LCASE(STR(?naamW)), "' + sparqlEsc(state.search.toLowerCase()) + '"))');
@@ -857,10 +893,10 @@
     return lines.join('\n    ');
   }
   function buildWerelderfgoedIdsQuery() {
-    return [CEO_PREFIXES, 'SELECT DISTINCT ?w WHERE {', '    ' + wInnerWhere(), '}', 'ORDER BY ?w', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
+    return [CEO_PREFIXES, 'SELECT (SAMPLE(?w) AS ?wPicked) WHERE {', '    ' + wInnerWhere(), '}', 'GROUP BY ?nr', 'ORDER BY ?nr', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
   }
   function buildWerelderfgoedCountQuery() {
-    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?w) AS ?cnt) WHERE {', '  ' + wInnerWhere(), '}'].join('\n');
+    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?nr) AS ?cnt) WHERE {', '  ' + wInnerWhere(), '}'].join('\n');
   }
   // heeftWerelderfgoedType -> skos:prefLabel is a direct, one-hop concept link (unlike
   // Gezicht's two-hop heeftType -> heeftTypeNaam) -- and this one DOES carry an @nl tag.
@@ -961,7 +997,7 @@
   function buildComplexDetailQuery(ids) {
     return [
       CEO_PREFIXES,
-      'SELECT ?co (SAMPLE(?naam) AS ?naamL) (SAMPLE(?nr) AS ?nrL) (SAMPLE(?hoofdPacked) AS ?hoofdPackedL) (COUNT(DISTINCT ?rm) AS ?nL)',
+      'SELECT ?co (SAMPLE(?naam) AS ?naamL) (SAMPLE(?nr) AS ?nrL) (SAMPLE(?hoofdPacked) AS ?hoofdPackedL) (COUNT(DISTINCT ?rm) AS ?nL) (SAMPLE(?omschrTekst) AS ?omschrijvingL)',
       'WHERE {',
       '  VALUES ?co { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }',
       '  OPTIONAL { ?co ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
@@ -971,6 +1007,12 @@
       '    BIND(' + packedPair('?hoofd', '?hoofdNaam') + ' AS ?hoofdPacked)',
       '  }',
       '  OPTIONAL { ?co ceo:heeftRijksmonument ?rm . }',
+      // Same formeelStandpunt=true-only rule as buildDetailQuery -- see omschrijvingHtml().
+      '  OPTIONAL {',
+      '    ?co ceo:heeftOmschrijving ?omschrObj .',
+      '    ?omschrObj ceo:formeelStandpunt true .',
+      '    ?omschrObj ceo:omschrijving ?omschrTekst .',
+      '  }',
       '}',
       'GROUP BY ?co'
     ].join('\n');
@@ -1447,6 +1489,16 @@
       '</dl>';
   }
 
+  // Shared by Rijksmonument and Complex detail rows -- both carry heeftOmschrijving, and only
+  // the formeelStandpunt=true text is fetched (see buildDetailQuery/buildComplexDetailQuery),
+  // so when this is empty it means no formally adopted description exists, not that one was
+  // filtered out; nothing is rendered in that case (old, description-less view unchanged).
+  function omschrijvingHtml(row) {
+    var tekst = row.omschrijvingL ? row.omschrijvingL.value : null;
+    if (!tekst) return '';
+    return '<div class="omschrijving"><h4>Omschrijving</h4><p>' + esc(tekst) + '</p></div>';
+  }
+
   function detailRowHtmlRijksmonument(row, colspan) {
     var rmnr = row.rmnrL ? row.rmnrL.value : null;
     var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
@@ -1454,6 +1506,7 @@
       '<p class="detail-title">' + esc(naam) + '</p>' +
       '<p class="detail-sub">' + (rmnr ? 'Rijksmonumentnummer ' + esc(rmnr) : 'Geen rijksmonumentnummer bekend') + '</p>' +
       detailFieldsHtmlRijksmonument(row) +
+      omschrijvingHtml(row) +
       (rmnr ? '<a class="register-link" href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">Bekijk in het Monumentenregister &rarr;</a>' : '') +
       '</td></tr>';
   }
@@ -1516,6 +1569,7 @@
       '<p class="detail-title">' + esc(naam) + '</p>' +
       '<p class="detail-sub">' + (nr ? 'Complexnummer ' + esc(nr) : 'Geen complexnummer bekend') + '</p>' +
       detailFieldsHtmlComplex(row) +
+      omschrijvingHtml(row) +
       '</td></tr>';
   }
 
@@ -1534,11 +1588,14 @@
     body.innerHTML = rows.map(function (row) {
       var id = row.rm.value;
       var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var rmnr = row.rmnrL ? row.rmnrL.value : null;
       var gem = row.gemL ? row.gemL.value : '—';
       var functie = row.functieL ? row.functieL.value : '—';
       var status = row.statusL ? row.statusL.value : '—';
       var mainRow = '<tr class="row' + (state.openRow === id ? ' open' : '') + '" data-id="' + esc(id) + '">' +
-        '<td class="naam-cell"><button type="button" class="row-toggle">' + esc(naam) + '</button></td>' +
+        '<td class="naam-cell"><button type="button" class="row-toggle">' + esc(naam) +
+        (rmnr ? '<span class="rmnr-sub tabular">Rijksmonumentnummer ' + esc(rmnr) + '</span>' : '') +
+        '</button></td>' +
         '<td>' + esc(gem) + '</td>' +
         '<td>' + esc(functie) + '</td>' +
         '<td>' + esc(status) + '</td>' +
@@ -1742,7 +1799,7 @@
     runQuery(buildWerelderfgoedIdsQuery()).then(function (idRows) {
       if (token !== reqToken) return [];
       if (!idRows.length) { state.lastRows = []; renderTable([]); if (state.tab === 'map') loadMap(); return []; }
-      var ids = idRows.map(function (r) { return r.w.value; });
+      var ids = idRows.map(function (r) { return r.wPicked.value; });
       return runQuery(buildWerelderfgoedDetailQuery(ids)).then(function (detailRows) {
         if (token !== reqToken) return;
         var byId = {};
@@ -1989,7 +2046,9 @@
       var gem = entityLinkHtml('gemeente', row.gemUriL ? row.gemUriL.value : null, row.gemL ? row.gemL.value : '—');
       var functie = entityLinkHtml('functie', row.functieUriL ? row.functieUriL.value : null, row.functieL ? row.functieL.value : '—');
       var rmnr = row.rmnrL ? row.rmnrL.value : null;
-      return '<tr><td class="naam-cell">' + recordLinkHtml('rijksmonument', row.rm.value, naam) + '</td><td>' + gem + '</td><td>' + functie +
+      return '<tr><td class="naam-cell">' + recordLinkHtml('rijksmonument', row.rm.value, naam) +
+        (rmnr ? '<span class="rmnr-sub tabular">Rijksmonumentnummer ' + esc(rmnr) + '</span>' : '') +
+        '</td><td>' + gem + '</td><td>' + functie +
         (rmnr ? ' &middot; <a href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">register</a>' : '') +
         '</td></tr>';
     }).join('');

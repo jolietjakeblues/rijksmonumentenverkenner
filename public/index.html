@@ -1,0 +1,2279 @@
+<!doctype html>
+<html lang="nl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rijksmonumentenverkenner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root {
+    --paper: #17130d;
+    --surface: #201a12;
+    --ink: #ece4d4;
+    --muted: #ab9d84;
+    --border: #362c1e;
+    --brick: #e0705f;
+    --brick-ink: #17110f;
+    --gold: #f0c14e;
+    --gold-soft: #332a10;
+    --grey-soft: #241e15;
+    --focus: #f0c14e;
+    --font-display: 'Bitter', Georgia, 'Times New Roman', serif;
+    --font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink); font-family: var(--font-body);
+    font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 20px 40px; margin: 0;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  a { color: var(--gold); }
+  .tabular { font-variant-numeric: tabular-nums; }
+  ::selection { background: var(--gold-soft); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .eyebrow { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(22px, 4vw, 32px); margin: 2px 0 14px; text-wrap: balance; }
+  .top-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-bottom: 14px; }
+  .top-meta a { color: var(--gold); text-decoration: underline; text-underline-offset: 2px; }
+
+  .intro { font-size: 13px; color: var(--muted); margin: 0 0 22px; max-width: 90ch; }
+  .intro strong { color: var(--ink); font-weight: 600; }
+
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: start; }
+  .layout[hidden] { display: none; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; }
+
+  .facets { padding: 16px; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 12px; }
+  @media (max-width: 760px) { .facets { position: static; } }
+
+  .facet-group h2 {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 8px;
+  }
+  .facet-toggle {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: none; border: none; padding: 2px 0; margin: 0 0 4px; font: inherit; cursor: pointer;
+  }
+  .facet-toggle-label {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); display: flex; align-items: center; gap: 6px;
+  }
+  .facet-toggle-label .count-tag { font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .facet-toggle:hover .facet-toggle-label { color: var(--gold); }
+  .facet-chevron { font-size: 15px; color: var(--muted); line-height: 1; transition: transform 0.15s ease; transform: rotate(0deg); }
+  .facet-toggle[aria-expanded="true"] .facet-chevron { transform: rotate(90deg); }
+  .facet-toggle[aria-expanded="true"] .facet-toggle-label { color: var(--ink); }
+  .facet-body { margin-top: 6px; }
+
+  .help-bar {
+    display: flex; flex-wrap: wrap; gap: 10px 28px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 3px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  .help-tip { flex: 1 1 220px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+  .help-label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); margin-bottom: 2px; }
+  .boot-notice {
+    background: var(--grey-soft); border: 1px solid var(--border); border-left: 3px solid var(--brick);
+    border-radius: 0 3px 3px 0; padding: 8px 12px; font-size: 12.5px; margin-bottom: 12px;
+  }
+
+  input[type="search"], input[type="text"] {
+    width: 100%; font-family: var(--font-body); font-size: 13.5px; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 3px; background: var(--paper); color: var(--ink);
+  }
+
+  .type-search { margin-bottom: 8px; }
+  .type-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; padding-right: 2px; }
+  .type-opt {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none;
+    border: 1px solid transparent; border-radius: 3px; padding: 5px 8px; font: inherit; font-size: 12.5px;
+    color: var(--ink); cursor: pointer;
+  }
+  .type-opt:hover { background: var(--grey-soft); }
+  .type-opt.active { background: var(--brick); color: var(--brick-ink); font-weight: 500; }
+  .type-opt .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .type-opt .n { font-family: var(--font-mono); font-size: 10.5px; opacity: 0.75; }
+  .type-empty { font-size: 12px; color: var(--muted); padding: 6px 8px; }
+
+  .reset-btn {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em; background: none;
+    border: 1px solid var(--border); border-radius: 3px; padding: 6px 10px; color: var(--muted); cursor: pointer;
+  }
+  .reset-btn:hover { border-color: var(--brick); color: var(--brick); }
+
+  .entity-link, .record-link {
+    background: none; border: none; padding: 0; font: inherit; color: var(--gold);
+    text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+  }
+  .entity-view { margin-top: 12px; }
+  .entity-header { padding: 18px 16px 14px; border-bottom: 1px solid var(--border); }
+  .back-btn {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em; background: none;
+    border: 1px solid var(--border); border-radius: 3px; padding: 5px 10px; color: var(--muted);
+    cursor: pointer; margin-bottom: 10px;
+  }
+  .back-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .entity-header h2 { font-family: var(--font-display); font-size: 20px; margin: 0 0 4px; }
+  .entity-meta { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
+
+  .main { display: flex; flex-direction: column; gap: 12px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; }
+  .result-count { font-size: 13px; }
+  .result-count b { font-family: var(--font-mono); font-weight: 500; }
+
+  .active-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; }
+  .filter-chip {
+    display: inline-flex; align-items: center; gap: 5px; background: var(--gold-soft); border: 1px solid var(--border);
+    border-radius: 20px; padding: 3px 5px 3px 10px; font-family: var(--font-mono); font-size: 11px; color: var(--ink);
+  }
+  .filter-chip button {
+    background: none; border: none; padding: 2px; margin: 0; cursor: pointer; color: var(--muted);
+    font: inherit; font-size: 13px; line-height: 1; border-radius: 50%;
+  }
+  .filter-chip button:hover { color: var(--brick); background: var(--surface); }
+
+  .tabs { display: flex; gap: 2px; }
+  .tab-btn {
+    font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase;
+    background: var(--grey-soft); border: 1px solid var(--border); padding: 7px 12px; cursor: pointer; color: var(--muted);
+  }
+  .tab-btn:first-child { border-radius: 3px 0 0 3px; }
+  .tab-btn:last-child { border-radius: 0 3px 3px 0; border-left: none; }
+  .tab-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  .type-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .type-tab {
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 7px 16px; cursor: pointer; color: var(--muted);
+  }
+  .type-tab:hover { border-color: var(--gold); color: var(--gold); }
+  .type-tab.active { background: var(--brick); color: var(--brick-ink); border-color: var(--brick); font-weight: 500; }
+
+  .content-panel { padding: 0; overflow: hidden; }
+  .state-msg { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th {
+    text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 10.5px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted); padding: 9px 12px; border-bottom: 1px solid var(--border);
+    background: var(--grey-soft); position: sticky; top: 0;
+  }
+  .table-scroll { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr.row { cursor: pointer; }
+  tbody tr.row:hover { background: var(--grey-soft); }
+  tbody tr.row.open { background: var(--gold-soft); }
+  .naam-cell { font-weight: 500; }
+  .row-toggle {
+    background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: 500;
+    color: var(--ink); text-align: left; cursor: pointer; width: 100%;
+  }
+  .row-toggle:hover { color: var(--gold); }
+
+  tr.detail-row td { background: var(--paper); padding: 16px; }
+  .detail-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; margin: 0 0 4px; }
+  .detail-sub { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 20px; font-size: 12px; max-width: 900px; }
+  .detail-grid dt { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 2px; }
+  .detail-grid dd { margin: 0; }
+  .no-val { color: var(--muted); font-style: italic; }
+  .register-link { display: inline-block; margin-top: 10px; font-family: var(--font-mono); font-size: 11.5px; }
+
+  .pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 12px; }
+  .pager button { font: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 6px 12px; cursor: pointer; color: var(--ink); }
+  .pager button:disabled { opacity: 0.35; cursor: default; }
+  .pager button:not(:disabled):hover { border-color: var(--gold); color: var(--gold); }
+
+  .map-note { font-size: 12px; color: var(--muted); margin: 14px 16px 0; }
+  #mapEl { height: 520px; width: 100%; }
+  .leaflet-popup-content-wrapper { background: var(--surface); color: var(--ink); }
+  .leaflet-popup-tip { background: var(--surface); }
+  .map-popup a { color: var(--gold); }
+
+  footer {
+    margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: space-between;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="eyebrow">Prototype &middot; faceted search</span>
+  <h1>Rijksmonumentenverkenner</h1>
+
+  <div class="top-meta">
+    Live SPARQL tegen <a href="https://linkeddata.cultureelerfgoed.nl/rce/cho" target="_blank" rel="noopener">RCE Cultureel Erfgoed (CHO)</a>
+  </div>
+
+  <p class="intro">
+    Werkend prototype van een <strong>facetzoek-portal</strong> op Nederlands cultureel erfgoed (rijksmonumenten, beschermde
+    stads-/dorpsgezichten en werelderfgoed) &mdash;
+    zusje van de <a href="https://rijkscollectieverkenner.jolietjakeblues64.workers.dev" target="_blank" rel="noopener">Rijkscollectie Verkenner</a>, zelfde patroon, andere ontologie (CEO in plaats van schema.org).
+    Kies hieronder een type, filter of zoek op naam, en klik door op elke facetwaarde voor een eigen pagina.
+  </p>
+
+  <div class="boot-notice" id="bootNotice" hidden></div>
+
+  <div class="help-bar">
+    <div class="help-tip"><span class="help-label">Doorklikken</span>Facetwaarden in de resultaten zijn klikbaar &mdash; dat opent een eigen pagina met alles binnen die waarde.</div>
+    <div class="help-tip"><span class="help-label">Facetaantallen</span>Zijn collectiebreed en veranderen niet mee met je huidige filters &mdash; sommige combinaties kunnen dus 0 resultaten geven.</div>
+    <div class="help-tip"><span class="help-label">Kaart</span><span id="mapHelpText">Toont alleen de huidige pagina met resultaten (niet de hele gefilterde set) &mdash; en alleen monumenten met een officieel geregistreerd punt.</span></div>
+  </div>
+
+  <div class="type-tabs" id="typeTabs">
+    <button class="type-tab active" type="button" data-type="rijksmonument">Rijksmonumenten</button>
+    <button class="type-tab" type="button" data-type="gezicht">Gezichten</button>
+    <button class="type-tab" type="button" data-type="werelderfgoed">Werelderfgoed</button>
+    <button class="type-tab" type="button" data-type="complex">Complexen</button>
+  </div>
+
+  <div class="layout" id="layout">
+
+    <aside class="panel facets">
+
+      <div class="facet-group">
+        <h2 id="searchLabel">Zoek op naam of nummer</h2>
+        <input type="search" id="searchInput" placeholder="bv. kerk, molen, of 20902&hellip;" autocomplete="off">
+      </div>
+
+      <div data-type-group="rijksmonument">
+
+      <div class="facet-group">
+        <button class="facet-toggle" type="button" data-facet="monumentaard" id="facetToggle-monumentaard" aria-expanded="false" aria-controls="facetBody-monumentaard">
+          <span class="facet-toggle-label">Monumentaard <span class="count-tag" id="monumentaardFacetNote"></span></span>
+          <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <div class="facet-body" id="facetBody-monumentaard" hidden>
+          <div class="type-list" id="monumentaardList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+        </div>
+      </div>
+
+      <div class="facet-group">
+        <button class="facet-toggle" type="button" data-facet="juridischeStatus" id="facetToggle-juridischeStatus" aria-expanded="false" aria-controls="facetBody-juridischeStatus">
+          <span class="facet-toggle-label">Juridische status <span class="count-tag" id="juridischeStatusFacetNote"></span></span>
+          <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <div class="facet-body" id="facetBody-juridischeStatus" hidden>
+          <div class="type-list" id="juridischeStatusList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+        </div>
+      </div>
+
+      <div class="facet-group">
+        <button class="facet-toggle" type="button" data-facet="functie" id="facetToggle-functie" aria-expanded="false" aria-controls="facetBody-functie">
+          <span class="facet-toggle-label">Functie <span class="count-tag" id="functieFacetNote"></span></span>
+          <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <div class="facet-body" id="facetBody-functie" hidden>
+          <input type="text" class="type-search" id="functieSearch" placeholder="filter functies&hellip;" autocomplete="off">
+          <div class="type-list" id="functieList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+        </div>
+      </div>
+
+      <div class="facet-group">
+        <button class="facet-toggle" type="button" data-facet="provincie" id="facetToggle-provincie" aria-expanded="false" aria-controls="facetBody-provincie">
+          <span class="facet-toggle-label">Provincie <span class="count-tag" id="provincieFacetNote"></span></span>
+          <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <div class="facet-body" id="facetBody-provincie" hidden>
+          <div class="type-list" id="provincieList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+        </div>
+      </div>
+
+      <div class="facet-group">
+        <button class="facet-toggle" type="button" data-facet="gemeente" id="facetToggle-gemeente" aria-expanded="false" aria-controls="facetBody-gemeente">
+          <span class="facet-toggle-label">Gemeente <span class="count-tag" id="gemeenteFacetNote"></span></span>
+          <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <div class="facet-body" id="facetBody-gemeente" hidden>
+          <input type="text" class="type-search" id="gemeenteSearch" placeholder="filter gemeenten&hellip;" autocomplete="off">
+          <div class="type-list" id="gemeenteList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+        </div>
+      </div>
+
+      <div class="facet-group">
+        <button class="facet-toggle" type="button" data-facet="plaats" id="facetToggle-plaats" aria-expanded="false" aria-controls="facetBody-plaats">
+          <span class="facet-toggle-label">Plaats <span class="count-tag" id="plaatsFacetNote"></span></span>
+          <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+        </button>
+        <div class="facet-body" id="facetBody-plaats" hidden>
+          <input type="text" class="type-search" id="plaatsSearch" placeholder="filter plaatsen&hellip;" autocomplete="off">
+          <div class="type-list" id="plaatsList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+        </div>
+      </div>
+
+      </div>
+
+      <div data-type-group="gezicht" hidden>
+        <div class="facet-group">
+          <button class="facet-toggle" type="button" data-facet="gezichtType" id="facetToggle-gezichtType" aria-expanded="false" aria-controls="facetBody-gezichtType">
+            <span class="facet-toggle-label">Type <span class="count-tag" id="gezichtTypeFacetNote"></span></span>
+            <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+          </button>
+          <div class="facet-body" id="facetBody-gezichtType" hidden>
+            <div class="type-list" id="gezichtTypeList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div data-type-group="werelderfgoed" hidden>
+        <div class="facet-group">
+          <button class="facet-toggle" type="button" data-facet="werelderfgoedType" id="facetToggle-werelderfgoedType" aria-expanded="false" aria-controls="facetBody-werelderfgoedType">
+            <span class="facet-toggle-label">Type <span class="count-tag" id="werelderfgoedTypeFacetNote"></span></span>
+            <span class="facet-chevron" aria-hidden="true">&rsaquo;</span>
+          </button>
+          <div class="facet-body" id="facetBody-werelderfgoedType" hidden>
+            <div class="type-list" id="werelderfgoedTypeList"><div class="type-empty">Bezig met laden&hellip;</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div data-type-group="complex" hidden>
+        <p class="entity-meta">Complexen hebben geen eigen filters &mdash; zoek hierboven op naam of complexnummer. Klik een complex open om door te klikken naar de rijksmonumenten die erbij horen.</p>
+      </div>
+
+      <button class="reset-btn" id="resetBtn" type="button">&times; Filters wissen</button>
+    </aside>
+
+    <section class="main">
+
+      <div class="panel toolbar">
+        <div class="result-count" id="resultCount">Bezig met zoeken&hellip;</div>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="table" type="button">Tabel</button>
+          <button class="tab-btn" data-tab="map" type="button">Kaart</button>
+        </div>
+      </div>
+
+      <div class="active-chips" id="activeChips" hidden></div>
+
+      <div class="panel content-panel" id="tableView">
+        <div class="table-scroll">
+          <table>
+            <thead id="resultsThead">
+              <tr><th>Naam</th><th>Gemeente</th><th>Functie</th><th>Status</th></tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <button id="prevBtnT" type="button">&larr; Vorige</button>
+          <span id="pageLabelT" class="tabular">pagina 1</span>
+          <button id="nextBtnT" type="button">Volgende &rarr;</button>
+        </div>
+      </div>
+
+      <div class="panel content-panel" id="mapView" hidden>
+        <p class="map-note" id="mapNote">Toont alleen de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad), en alleen monumenten met een officieel geregistreerd punt uit de graph <code>punten</code>. Geen zelfberekende centroïden van polygonen.</p>
+        <div class="state-msg" id="mapStatus" hidden></div>
+        <div id="mapEl"></div>
+        <div class="pager">
+          <button id="prevBtnM" type="button">&larr; Vorige</button>
+          <span id="pageLabelM" class="tabular">pagina 1</span>
+          <button id="nextBtnM" type="button">Volgende &rarr;</button>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <div class="panel entity-view" id="entityView" hidden>
+    <div class="entity-header">
+      <button class="back-btn" id="entityBackBtn" type="button">&larr; Terug naar zoeken</button>
+      <span class="eyebrow" id="entityDim"></span>
+      <h2 id="entityName"></h2>
+      <p class="entity-meta" id="entityMeta"></p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead id="entityThead"><tr><th>Naam</th><th>Gemeente</th><th>Functie</th></tr></thead>
+        <tbody id="entityWorksBody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <button id="entityPrevBtn" type="button">&larr; Vorige</button>
+      <span id="entityPageLabel" class="tabular">pagina 1</span>
+      <button id="entityNextBtn" type="button">Volgende &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Single-record permalink: opened by clicking a one-off record reference (e.g. a
+       complex's hoofdobject) rather than a facet value -- reuses the same detail-row HTML
+       already built for the inline "open row" expand, just wrapped standalone. -->
+  <div class="panel entity-view" id="recordView" hidden>
+    <div class="entity-header">
+      <button class="back-btn" id="recordBackBtn" type="button">&larr; Terug naar zoeken</button>
+      <span class="eyebrow" id="recordEyebrow"></span>
+      <h2 id="recordName"></h2>
+    </div>
+    <table>
+      <tbody id="recordBody"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <span>Data: RCE Cultureel Erfgoed (CHO/CEO-model) &middot; ververst live, geen cache.</span>
+    <span>Zusje van de <a href="https://rijkscollectieverkenner.jolietjakeblues64.workers.dev" target="_blank" rel="noopener">Rijkscollectie Verkenner</a>. Patroon geïnspireerd op <a href="https://github.com/SemanticComputing/sampo-ui" target="_blank" rel="noopener">SemanticComputing/sampo-ui</a>.</span>
+  </footer>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function () {
+  'use strict';
+
+  var ENDPOINT = '/api/sparql';
+  var PAGE_SIZE = 12;
+
+  var CEO_PREFIXES = [
+    'PREFIX ceo: <https://linkeddata.cultureelerfgoed.nl/def/ceo#>',
+    'PREFIX skos: <http://www.w3.org/2004/02/skos/core#>',
+    'PREFIX geo: <http://www.opengis.net/ont/geosparql#>'
+  ].join('\n');
+  var INSTANTIES_GRAPH = 'https://linkeddata.cultureelerfgoed.nl/graph/instanties-rce';
+  var PUNTEN_GRAPH = 'https://linkeddata.cultureelerfgoed.nl/graph/punten';
+
+  var state = {
+    browseType: 'rijksmonument', // 'rijksmonument' | 'gezicht' | 'werelderfgoed' | 'complex'
+    search: '',
+    monumentaard: null,      // concept URI
+    juridischeStatus: null,  // concept URI
+    functieUri: null,        // concept URI (heeftOorspronkelijkeFunctie -> heeftFunctieNaam)
+    provincieUri: null,      // OWMS concept URI
+    gemeenteUri: null,       // OWMS concept URI
+    plaats: null,            // literal woonplaatsnaam string
+    gezichtTypeUri: null,        // concept URI (heeftType -> heeftTypeNaam)
+    werelderfgoedTypeUri: null,  // concept URI (heeftWerelderfgoedType, direct)
+    offset: 0,
+    tab: 'table',             // 'table' | 'map'
+    openRow: null,
+    monumentaardOptions: [],
+    juridischeStatusOptions: [],
+    functieOptions: [],
+    functieSearchResults: null,
+    provincieOptions: [],
+    gemeenteOptions: [],
+    gemeenteSearchResults: null,
+    plaatsOptions: [],
+    plaatsSearchResults: null,
+    gezichtTypeOptions: [],
+    werelderfgoedTypeOptions: [],
+    lastRows: [],
+    lastEntityRows: [],
+    mapPoints: null,
+    view: 'browse',      // 'browse' | 'entity' | 'record'
+    viewDim: null,        // 'monumentaard' | 'juridischeStatus' | 'functie' | 'provincie' | 'gemeente' | 'plaats' | 'complex' | 'gezichtType' | 'werelderfgoedType' | 'gezichtStatus' | 'werelderfgoedStatus'
+    viewId: null,
+    recordType: null,     // 'rijksmonument' | 'gezicht' | 'werelderfgoed', when view === 'record'
+    recordId: null,
+    entityOffset: 0,
+    facetOpen: { monumentaard: false, juridischeStatus: false, functie: false, provincie: false, gemeente: false, plaats: false, gezichtType: false, werelderfgoedType: false }
+  };
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function sparqlEsc(s) { return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
+
+  function runQuery(query) {
+    var url = ENDPOINT + '?query=' + encodeURIComponent(query);
+    return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (json) { return json.results.bindings; });
+  }
+
+  // ---------- SAMPLE() correlation-safety helper (same trick as the Rijkscollectie
+  // project): independent OPTIONAL blocks aggregated with separate SAMPLE() calls are NOT
+  // guaranteed to pick their values from the same underlying solution row. Packing a
+  // URI+label pair into one string before SAMPLE()-ing it, then splitting client-side,
+  // keeps them genuinely correlated. ----------
+  var PACK_SEP = '|||';
+  function packedPair(a, b) { return 'CONCAT(STR(' + a + '), "' + PACK_SEP + '", COALESCE(STR(' + b + '), ""))'; }
+  function unpackPair(packedBinding) {
+    if (!packedBinding) return [null, null];
+    var raw = packedBinding.value;
+    var i = raw.indexOf(PACK_SEP);
+    var a = i === -1 ? raw : raw.slice(0, i);
+    var b = i === -1 ? '' : raw.slice(i + PACK_SEP.length);
+    return [a ? { value: a } : null, b ? { value: b } : null];
+  }
+
+  function valuesClause(ids) {
+    return 'VALUES ?rm { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }';
+  }
+
+  // ---------- query builders ----------
+
+  function innerWhere() {
+    var lines = ['?rm a ceo:Rijksmonument .'];
+    if (state.search) {
+      // ceo:rijksmonumentnummer is xsd:string, never a bare integer (RCE's own documented
+      // pitfall) -- a purely-numeric search term is almost certainly someone looking up a
+      // known register number ("20902"), not a coincidental name match, so match it as an
+      // exact string alongside the usual name search rather than only ever searching naam.
+      var isNumeric = /^\d+$/.test(state.search.trim());
+      if (isNumeric) {
+        lines.push('{ ?rm ceo:heeftNaam ?nObjF . ?nObjF ceo:naam ?naamF . FILTER(CONTAINS(LCASE(STR(?naamF)), "' + sparqlEsc(state.search.toLowerCase()) + '")) }');
+        lines.push('UNION { ?rm ceo:rijksmonumentnummer "' + sparqlEsc(state.search.trim()) + '" }');
+      } else {
+        lines.push('?rm ceo:heeftNaam ?nObjF . ?nObjF ceo:naam ?naamF .');
+        lines.push('FILTER(CONTAINS(LCASE(STR(?naamF)), "' + sparqlEsc(state.search.toLowerCase()) + '"))');
+      }
+    }
+    // monumentaard/juridische status live in the instanties-rce graph -- querying them
+    // without this GRAPH restriction silently double-counts (RCE's own documented pitfall).
+    if (state.monumentaard || state.juridischeStatus) {
+      lines.push('GRAPH <' + INSTANTIES_GRAPH + '> {');
+      if (state.monumentaard) lines.push('  ?rm ceo:heeftMonumentAard <' + state.monumentaard + '> .');
+      if (state.juridischeStatus) lines.push('  ?rm ceo:heeftJuridischeStatus <' + state.juridischeStatus + '> .');
+      lines.push('}');
+    }
+    if (state.functieUri) {
+      lines.push('?rm ceo:heeftOorspronkelijkeFunctie ?fObjF . ?fObjF ceo:heeftFunctieNaam <' + state.functieUri + '> .');
+    }
+    // Provincie/gemeente/plaats all hang off the SAME BasisregistratieRelatie node -- share
+    // one ?brF variable across all three so combining them doesn't join across different
+    // BasisregistratieRelatie instances of the same monument.
+    if (state.provincieUri || state.gemeenteUri || state.plaats) {
+      lines.push('?rm ceo:heeftBasisregistratieRelatie ?brF .');
+      if (state.provincieUri) lines.push('?brF ceo:heeftProvincie <' + state.provincieUri + '> .');
+      if (state.gemeenteUri) lines.push('?brF ceo:heeftGemeente <' + state.gemeenteUri + '> .');
+      if (state.plaats) {
+        lines.push('?brF ceo:heeftBAGRelatie ?bagF . ?bagF ceo:woonplaatsnaam ?woonplaatsF .');
+        lines.push('FILTER(STR(?woonplaatsF) = "' + sparqlEsc(state.plaats) + '")');
+      }
+    }
+    return lines.join('\n    ');
+  }
+
+  function buildIdsQuery() {
+    return [
+      CEO_PREFIXES,
+      'SELECT DISTINCT ?rm WHERE {',
+      '    ' + innerWhere(),
+      '}',
+      'ORDER BY ?rm',
+      'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset
+    ].join('\n');
+  }
+
+  function buildCountQuery() {
+    return [
+      CEO_PREFIXES,
+      'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE {',
+      '  ' + innerWhere(),
+      '}'
+    ].join('\n');
+  }
+
+  // PERFORMANCE FINDING (live-measured while building, 2026-09-25): a full-collection
+  // GROUP BY aggregate on this endpoint -- even over a tiny-cardinality field like
+  // monumentaard (2 values) -- took 22-25s; the equivalent unfiltered browse count/ids
+  // query ranged 22-58s and sometimes hit a straight 504. RCE's own tooling documents
+  // full-dataset GROUP BY scans on this endpoint as "can take about a minute" -- this is
+  // not a query-shape mistake to fix, it is how this specific Virtuoso instance behaves.
+  // Two concrete mitigations that DID measure much faster:
+  //   1. Dropping the redundant `?rm a ceo:Rijksmonument` join (heeftMonumentAard etc.
+  //      already imply that domain) cut the monumentaard aggregate from 22s to 7s.
+  //   2. A single known-URI COUNT (no aggregation across all values) took ~1s.
+  // So: monumentaard/juridischeStatus/provincie are small, effectively-fixed vocabularies
+  // (2 / 3 / 12 values, verified live) -- listed as fixed {id,label} arrays below instead
+  // of discovered via an expensive GROUP BY, with counts fetched as N small parallel
+  // per-value queries (fast) rather than one slow aggregate. functie/gemeente/plaats stay
+  // open vocabularies (1000+ values) with no upfront top-N load at all -- see
+  // loadFacets()/wireLiveFacetSearch() below -- only a live, CONTAINS-filtered search once
+  // the visitor types 2+ characters, which is still not instant (~8-9s measured) but is at
+  // least bounded to what they're actually looking for instead of the whole collection.
+
+  var MONUMENTAARD_FIXED = [
+    { id: 'https://data.cultureelerfgoed.nl/term/id/rn/2/fc966a68-8863-4970-a83e-110f96006c21', label: 'onroerend gebouwd' },
+    { id: 'https://data.cultureelerfgoed.nl/term/id/rn/2/b673c8c1-5d93-496d-8f9e-89133d579d77', label: 'archeologisch' }
+  ];
+  var JURIDISCHE_STATUS_FIXED = [
+    { id: 'https://data.cultureelerfgoed.nl/term/id/rn/2/b2d9a59a-fe1e-4552-9a05-3c2acddff864', label: 'rijksmonument' },
+    { id: 'https://data.cultureelerfgoed.nl/term/id/rn/2/3e79bb7c-b459-4998-a9ed-78d91d069227', label: 'geen rijksmonument' },
+    { id: 'https://data.cultureelerfgoed.nl/term/id/rn/2/2e93edd1-098f-4f31-ae7e-72cb77f4d2ca', label: 'voorbeschermd' }
+  ];
+  var PROVINCIE_FIXED = [
+    { id: 'http://standaarden.overheid.nl/owms/terms/Drenthe', label: 'Drenthe' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Flevoland', label: 'Flevoland' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Fryslan', label: 'Fryslân' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Gelderland', label: 'Gelderland' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Groningen_(provincie)', label: 'Groningen' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Limburg', label: 'Limburg' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Noord-Brabant', label: 'Noord-Brabant' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Noord-Holland', label: 'Noord-Holland' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Overijssel', label: 'Overijssel' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Utrecht_(provincie)', label: 'Utrecht' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Zeeland_(provincie)', label: 'Zeeland' },
+    { id: 'http://standaarden.overheid.nl/owms/terms/Zuid-Holland', label: 'Zuid-Holland' }
+  ];
+
+  function buildSingleCountQuery(kind, id) {
+    if (kind === 'monumentaard') return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { GRAPH <' + INSTANTIES_GRAPH + '> { ?rm ceo:heeftMonumentAard <' + id + '> . } }'].join('\n');
+    if (kind === 'juridischeStatus') return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { GRAPH <' + INSTANTIES_GRAPH + '> { ?rm ceo:heeftJuridischeStatus <' + id + '> . } }'].join('\n');
+    // provincie
+    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?rm) AS ?cnt) WHERE { ?rm ceo:heeftBasisregistratieRelatie ?br . ?br ceo:heeftProvincie <' + id + '> . }'].join('\n');
+  }
+
+  // Search-only (no eager top-N load, see the performance note above). No `?rm a
+  // ceo:Rijksmonument` join -- heeftOorspronkelijkeFunctie/heeftGemeente already imply it.
+  function buildFacetQuery(kind, searchTerm) {
+    var needleFilter = 'FILTER(CONTAINS(LCASE(STR(?label)), "' + sparqlEsc(searchTerm.toLowerCase()) + '"))';
+    if (kind === 'functie') {
+      return [
+        CEO_PREFIXES,
+        'SELECT ?uri (SAMPLE(?label) AS ?labelL) (COUNT(DISTINCT ?rm) AS ?cnt) WHERE {',
+        '  ?rm ceo:heeftOorspronkelijkeFunctie ?fObj .',
+        '  ?fObj ceo:heeftFunctieNaam ?uri .',
+        '  ?uri skos:prefLabel ?label .',
+        '  FILTER(lang(?label) = "nl")',
+        '  ' + needleFilter,
+        '}',
+        'GROUP BY ?uri',
+        'ORDER BY DESC(?cnt)',
+        'LIMIT 40'
+      ].join('\n');
+    }
+    // gemeente
+    return [
+      CEO_PREFIXES,
+      'SELECT ?uri (SAMPLE(?label) AS ?labelL) (COUNT(DISTINCT ?rm) AS ?cnt) WHERE {',
+      '  ?rm ceo:heeftBasisregistratieRelatie ?br .',
+      '  ?br ceo:heeftGemeente ?uri .',
+      '  ?uri skos:prefLabel ?label .',
+      '  ' + needleFilter,
+      '}',
+      'GROUP BY ?uri',
+      'ORDER BY DESC(?cnt)',
+      'LIMIT 40'
+    ].join('\n');
+  }
+
+  // Plaats is a plain literal (woonplaatsnaam), not a concept URI -- same shape as "maker"
+  // in the Rijkscollectie project. Search-only, same reasoning as buildFacetQuery above.
+  function buildPlaatsFacetQuery(searchTerm) {
+    var needleFilter = 'FILTER(CONTAINS(LCASE(STR(?label)), "' + sparqlEsc(searchTerm.toLowerCase()) + '"))';
+    return [
+      CEO_PREFIXES,
+      'SELECT ?label (COUNT(DISTINCT ?rm) AS ?cnt) WHERE {',
+      '  ?rm ceo:heeftBasisregistratieRelatie ?br .',
+      '  ?br ceo:heeftBAGRelatie ?bag . ?bag ceo:woonplaatsnaam ?label .',
+      '  ' + needleFilter,
+      '}',
+      'GROUP BY ?label',
+      'ORDER BY DESC(?cnt)',
+      'LIMIT 40'
+    ].join('\n');
+  }
+
+  function buildDetailQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?rm (SAMPLE(?naam) AS ?naamL) (SAMPLE(?rmnr) AS ?rmnrL) (SAMPLE(?datum) AS ?datumL)',
+      '  (SAMPLE(?aardPacked) AS ?aardPackedL) (SAMPLE(?statusPacked) AS ?statusPackedL) (SAMPLE(?functiePacked) AS ?functiePackedL)',
+      '  (SAMPLE(?provPacked) AS ?provPackedL) (SAMPLE(?gemPacked) AS ?gemPackedL) (SAMPLE(?woonplaats) AS ?woonplaatsL) (SAMPLE(?adres) AS ?adresL)',
+      '  (SAMPLE(?complexPacked) AS ?complexPackedL) (SAMPLE(?complexNr) AS ?complexNrL)',
+      'WHERE {',
+      '  ' + valuesClause(ids),
+      '  OPTIONAL { ?rm ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?rm ceo:rijksmonumentnummer ?rmnr . }',
+      '  OPTIONAL { ?rm ceo:datumInschrijvingInMonumentenregister ?datum . }',
+      // monumentaard + juridische status share one GRAPH-scoped OPTIONAL block -- both are
+      // effectively single-valued per monument in this data (verified live), so the small
+      // risk of an internal pairing mismatch if a monument unusually had 2+ of either is an
+      // accepted simplification, same spirit as the genre/materiaal SAMPLE()-arbitrary-pick
+      // trade-off already documented in the Rijkscollectie project.
+      '  OPTIONAL {',
+      '    GRAPH <' + INSTANTIES_GRAPH + '> {',
+      '      OPTIONAL { ?rm ceo:heeftMonumentAard ?aardObj . }',
+      '      OPTIONAL { ?rm ceo:heeftJuridischeStatus ?statusObj . }',
+      '    }',
+      '    OPTIONAL { ?aardObj skos:prefLabel ?aardLabel . }',
+      '    OPTIONAL { ?statusObj skos:prefLabel ?statusLabel . }',
+      '    BIND(' + packedPair('?aardObj', '?aardLabel') + ' AS ?aardPacked)',
+      '    BIND(' + packedPair('?statusObj', '?statusLabel') + ' AS ?statusPacked)',
+      '  }',
+      '  OPTIONAL {',
+      '    ?rm ceo:heeftOorspronkelijkeFunctie ?fObj . ?fObj ceo:heeftFunctieNaam ?functieUri .',
+      '    ?functieUri skos:prefLabel ?functieLabel . FILTER(lang(?functieLabel) = "nl")',
+      '    BIND(' + packedPair('?functieUri', '?functieLabel') + ' AS ?functiePacked)',
+      '  }',
+      '  OPTIONAL {',
+      '    ?rm ceo:heeftBasisregistratieRelatie ?br .',
+      '    OPTIONAL { ?br ceo:heeftProvincie ?provObj . ?provObj skos:prefLabel ?provLabel . }',
+      '    OPTIONAL { ?br ceo:heeftGemeente ?gemObj . ?gemObj skos:prefLabel ?gemLabel . }',
+      '    OPTIONAL { ?br ceo:heeftBAGRelatie ?bag . OPTIONAL { ?bag ceo:woonplaatsnaam ?woonplaats . } OPTIONAL { ?bag ceo:volledigAdres ?adres . } }',
+      '    BIND(' + packedPair('?provObj', '?provLabel') + ' AS ?provPacked)',
+      '    BIND(' + packedPair('?gemObj', '?gemLabel') + ' AS ?gemPacked)',
+      '  }',
+      // isOnderdeelVanComplex also covers a complex's "hoofdobject" monument (verified
+      // live: a hoofdobject carries both isHoofdobjectVanComplex AND isOnderdeelVanComplex
+      // pointing at the same complex), so this one relation is enough -- no need to also
+      // query isHoofdobjectVanComplex separately.
+      '  OPTIONAL {',
+      '    ?rm ceo:isOnderdeelVanComplex ?complex .',
+      '    OPTIONAL { ?complex ceo:heeftNaam ?cNameObj . ?cNameObj ceo:naam ?complexNaam . }',
+      '    OPTIONAL { ?complex ceo:complexnummer ?complexNr . }',
+      '    BIND(' + packedPair('?complex', '?complexNaam') + ' AS ?complexPacked)',
+      '  }',
+      '}',
+      'GROUP BY ?rm'
+    ].join('\n');
+  }
+
+  function normalizeDetailRow(row) {
+    var aard = unpackPair(row.aardPackedL);
+    var status = unpackPair(row.statusPackedL);
+    var functie = unpackPair(row.functiePackedL);
+    var prov = unpackPair(row.provPackedL);
+    var gem = unpackPair(row.gemPackedL);
+    var complex = unpackPair(row.complexPackedL);
+    row.aardUriL = aard[0]; row.aardL = aard[1];
+    row.statusUriL = status[0]; row.statusL = status[1];
+    row.functieUriL = functie[0]; row.functieL = functie[1];
+    row.provUriL = prov[0]; row.provL = prov[1];
+    row.gemUriL = gem[0]; row.gemL = gem[1];
+    row.complexUriL = complex[0]; row.complexNaamL = complex[1];
+    return row;
+  }
+
+  // ---------- Gezicht (beschermd stads-/dorpsgezicht) ----------
+  // Small (954 instances) and fast on this endpoint (live-measured ~0-1s even for an
+  // unfiltered full-collection aggregate) -- none of the Rijksmonument performance
+  // workarounds (fixed lists + per-value counts, search-only facets, no eager browse) are
+  // needed here. Straightforward eager-loading, same shape as the original Rijkscollectie
+  // project's facets.
+
+  function gInnerWhere() {
+    var lines = ['?g a ceo:Gezicht .'];
+    if (state.search) {
+      lines.push('?g ceo:heeftNaam ?nObjG . ?nObjG ceo:naam ?naamG .');
+      lines.push('FILTER(CONTAINS(LCASE(STR(?naamG)), "' + sparqlEsc(state.search.toLowerCase()) + '"))');
+    }
+    if (state.gezichtTypeUri) {
+      lines.push('?g ceo:heeftType ?tObjG . ?tObjG ceo:heeftTypeNaam <' + state.gezichtTypeUri + '> .');
+    }
+    return lines.join('\n    ');
+  }
+  function buildGezichtIdsQuery() {
+    return [CEO_PREFIXES, 'SELECT DISTINCT ?g WHERE {', '    ' + gInnerWhere(), '}', 'ORDER BY ?g', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
+  }
+  function buildGezichtCountQuery() {
+    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?g) AS ?cnt) WHERE {', '  ' + gInnerWhere(), '}'].join('\n');
+  }
+  // heeftTypeNaam's skos:prefLabel has NO language tag on this dataset (verified live) --
+  // a FILTER(lang(...)="nl") here would silently filter every row out.
+  function buildGezichtTypeFacetQuery() {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?uri (SAMPLE(?label) AS ?labelL) (COUNT(DISTINCT ?g) AS ?cnt) WHERE {',
+      '  ?g a ceo:Gezicht ; ceo:heeftType ?tObj . ?tObj ceo:heeftTypeNaam ?uri . ?uri skos:prefLabel ?label .',
+      '}',
+      'GROUP BY ?uri',
+      'ORDER BY DESC(?cnt)'
+    ].join('\n');
+  }
+  function buildGezichtDetailQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?g (SAMPLE(?naam) AS ?naamL) (SAMPLE(?nr) AS ?nrL) (SAMPLE(?typePacked) AS ?typePackedL)',
+      '  (SAMPLE(?statusPacked) AS ?statusPackedL) (SAMPLE(?bijzonder) AS ?bijzonderL) (SAMPLE(?url) AS ?urlL)',
+      'WHERE {',
+      '  VALUES ?g { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }',
+      '  OPTIONAL { ?g ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?g ceo:gezichtsnummer ?nr . }',
+      '  OPTIONAL { ?g ceo:bijzonderGebied ?bijzonder . }',
+      '  OPTIONAL { ?g ceo:wordtGetoondOp ?url . }',
+      '  OPTIONAL {',
+      '    ?g ceo:heeftGezichtsstatus ?statusObj . ?statusObj skos:prefLabel ?statusLabel .',
+      '    BIND(' + packedPair('?statusObj', '?statusLabel') + ' AS ?statusPacked)',
+      '  }',
+      '  OPTIONAL {',
+      '    ?g ceo:heeftType ?tObj . ?tObj ceo:heeftTypeNaam ?tUri . ?tUri skos:prefLabel ?typeLabel .',
+      '    BIND(' + packedPair('?tUri', '?typeLabel') + ' AS ?typePacked)',
+      '  }',
+      '}',
+      'GROUP BY ?g'
+    ].join('\n');
+  }
+  function normalizeGezichtRow(row) {
+    var type = unpackPair(row.typePackedL);
+    row.typeUriL = type[0]; row.typeL = type[1];
+    var status = unpackPair(row.statusPackedL);
+    row.statusUriL = status[0]; row.statusL = status[1];
+    return row;
+  }
+  function buildGezichtMapQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?g (SAMPLE(?naam) AS ?naamL) (SAMPLE(?wkt) AS ?wktL) (SAMPLE(?url) AS ?urlL) WHERE {',
+      '  VALUES ?g { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }',
+      '  OPTIONAL { ?g ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?g ceo:wordtGetoondOp ?url . }',
+      '  GRAPH <' + INSTANTIES_GRAPH + '> { ?g ceo:heeftGeometrie ?geom . }',
+      '  ?geom geo:asWKT ?wkt .',
+      '}',
+      'GROUP BY ?g'
+    ].join('\n');
+  }
+  function buildGezichtEntityFilterClause(id) {
+    return '?g ceo:heeftType ?tObjE . ?tObjE ceo:heeftTypeNaam <' + id + '> .';
+  }
+  // Single-valued across the whole dataset (472/482 gezichten are "beschermd", live-verified)
+  // but still a real skos:prefLabel concept with its own URI -- doorklikbaar like every other
+  // concept-valued field, not plain text, even though the resulting list is nearly everything.
+  function buildGezichtStatusEntityFilterClause(id) {
+    return '?g ceo:heeftGezichtsstatus <' + id + '> .';
+  }
+
+  // ---------- Werelderfgoed ----------
+  // Even smaller (18 instances over 12 unique UNESCO sites -- some sites have several
+  // component records, each with its own geometry, deliberately shown separately rather
+  // than merged). Same "just eager-load it" reasoning as Gezicht.
+
+  function wInnerWhere() {
+    var lines = ['?w a ceo:Werelderfgoed .'];
+    if (state.search) {
+      lines.push('?w ceo:heeftNaam ?nObjW . ?nObjW ceo:naam ?naamW .');
+      lines.push('FILTER(CONTAINS(LCASE(STR(?naamW)), "' + sparqlEsc(state.search.toLowerCase()) + '"))');
+    }
+    if (state.werelderfgoedTypeUri) {
+      lines.push('?w ceo:heeftWerelderfgoedType <' + state.werelderfgoedTypeUri + '> .');
+    }
+    return lines.join('\n    ');
+  }
+  function buildWerelderfgoedIdsQuery() {
+    return [CEO_PREFIXES, 'SELECT DISTINCT ?w WHERE {', '    ' + wInnerWhere(), '}', 'ORDER BY ?w', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
+  }
+  function buildWerelderfgoedCountQuery() {
+    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?w) AS ?cnt) WHERE {', '  ' + wInnerWhere(), '}'].join('\n');
+  }
+  // heeftWerelderfgoedType -> skos:prefLabel is a direct, one-hop concept link (unlike
+  // Gezicht's two-hop heeftType -> heeftTypeNaam) -- and this one DOES carry an @nl tag.
+  function buildWerelderfgoedTypeFacetQuery() {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?uri (SAMPLE(?label) AS ?labelL) (COUNT(DISTINCT ?w) AS ?cnt) WHERE {',
+      '  ?w a ceo:Werelderfgoed ; ceo:heeftWerelderfgoedType ?uri . ?uri skos:prefLabel ?label .',
+      '}',
+      'GROUP BY ?uri',
+      'ORDER BY DESC(?cnt)'
+    ].join('\n');
+  }
+  function buildWerelderfgoedDetailQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?w (SAMPLE(?naam) AS ?naamL) (SAMPLE(?nr) AS ?nrL) (SAMPLE(?jaar) AS ?jaarL)',
+      '  (SAMPLE(?typePacked) AS ?typePackedL) (SAMPLE(?statusPacked) AS ?statusPackedL) (SAMPLE(?url) AS ?urlL)',
+      'WHERE {',
+      '  VALUES ?w { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }',
+      '  OPTIONAL { ?w ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?w ceo:werelderfgoednummer ?nr . }',
+      '  OPTIONAL { ?w ceo:jaarVanInschrijving ?jaar . }',
+      '  OPTIONAL { ?w ceo:wordtGetoondOp ?url . }',
+      '  OPTIONAL {',
+      '    ?w ceo:heeftWerelderfgoedType ?tUri . ?tUri skos:prefLabel ?typeLabel .',
+      '    BIND(' + packedPair('?tUri', '?typeLabel') + ' AS ?typePacked)',
+      '  }',
+      '  OPTIONAL {',
+      '    ?w ceo:heeftWerelderfgoedstatus ?statusObj . ?statusObj skos:prefLabel ?statusLabel .',
+      '    BIND(' + packedPair('?statusObj', '?statusLabel') + ' AS ?statusPacked)',
+      '  }',
+      '}',
+      'GROUP BY ?w'
+    ].join('\n');
+  }
+  function normalizeWerelderfgoedRow(row) {
+    var type = unpackPair(row.typePackedL);
+    row.typeUriL = type[0]; row.typeL = type[1];
+    var status = unpackPair(row.statusPackedL);
+    row.statusUriL = status[0]; row.statusL = status[1];
+    return row;
+  }
+  function buildWerelderfgoedMapQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?w (SAMPLE(?naam) AS ?naamL) (SAMPLE(?wkt) AS ?wktL) (SAMPLE(?url) AS ?urlL) WHERE {',
+      '  VALUES ?w { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }',
+      '  OPTIONAL { ?w ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?w ceo:wordtGetoondOp ?url . }',
+      '  GRAPH <' + INSTANTIES_GRAPH + '> { ?w ceo:heeftGeometrie ?geom . }',
+      '  ?geom geo:asWKT ?wkt .',
+      '}',
+      'GROUP BY ?w'
+    ].join('\n');
+  }
+  function buildWerelderfgoedEntityFilterClause(id) {
+    return '?w ceo:heeftWerelderfgoedType <' + id + '> .';
+  }
+  // Single-valued across the whole dataset (all 18 werelderfgoed-records carry the same
+  // "werelderfgoed" status, live-verified) but still a real concept URI -- see the identical
+  // note on buildGezichtStatusEntityFilterClause above.
+  function buildWerelderfgoedStatusEntityFilterClause(id) {
+    return '?w ceo:heeftWerelderfgoedstatus <' + id + '> .';
+  }
+
+  // ---------- Complex ----------
+  // A grouping/relation concept, not a heritage object of its own -- 2834 distinct instances
+  // (GRAPH-scoping isn't needed to avoid double-counting here, unlike heeftMonumentAard etc.:
+  // a plain `?co a ceo:Complex` with SELECT DISTINCT / COUNT(DISTINCT ?co) already gives the
+  // correct 2834, live-verified). Small + fast like Gezicht/Werelderfgoed -- eager-loadable,
+  // no facets of its own (no monumentaard/provincie/etc. on Complex itself). Its main purpose
+  // here is doorklikken: every complex row links through to its constituent rijksmonumenten
+  // via the SAME entity-page machinery already used for the 'complex' facet dimension on a
+  // Rijksmonument's own detail row (ceo:heeftRijksmonument is the forward direction of
+  // isOnderdeelVanComplex -- verified live -- but the existing isOnderdeelVanComplex-based
+  // entity filter is reused as-is rather than duplicated).
+  function coInnerWhere() {
+    var lines = ['?co a ceo:Complex .'];
+    if (state.search) {
+      var isNumeric = /^\d+$/.test(state.search.trim());
+      if (isNumeric) {
+        lines.push('{ ?co ceo:heeftNaam ?nObjC . ?nObjC ceo:naam ?naamC . FILTER(CONTAINS(LCASE(STR(?naamC)), "' + sparqlEsc(state.search.toLowerCase()) + '")) }');
+        lines.push('UNION { ?co ceo:complexnummer "' + sparqlEsc(state.search.trim()) + '" }');
+      } else {
+        lines.push('?co ceo:heeftNaam ?nObjC . ?nObjC ceo:naam ?naamC .');
+        lines.push('FILTER(CONTAINS(LCASE(STR(?naamC)), "' + sparqlEsc(state.search.toLowerCase()) + '"))');
+      }
+    }
+    return lines.join('\n    ');
+  }
+  function buildComplexIdsQuery() {
+    return [CEO_PREFIXES, 'SELECT DISTINCT ?co WHERE {', '    ' + coInnerWhere(), '}', 'ORDER BY ?co', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
+  }
+  function buildComplexCountQuery() {
+    return [CEO_PREFIXES, 'SELECT (COUNT(DISTINCT ?co) AS ?cnt) WHERE {', '  ' + coInnerWhere(), '}'].join('\n');
+  }
+  function buildComplexDetailQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?co (SAMPLE(?naam) AS ?naamL) (SAMPLE(?nr) AS ?nrL) (SAMPLE(?hoofdPacked) AS ?hoofdPackedL) (COUNT(DISTINCT ?rm) AS ?nL)',
+      'WHERE {',
+      '  VALUES ?co { ' + ids.map(function (id) { return '<' + id + '>'; }).join(' ') + ' }',
+      '  OPTIONAL { ?co ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?co ceo:complexnummer ?nr . }',
+      '  OPTIONAL {',
+      '    ?co ceo:heeftHoofdobject ?hoofd . OPTIONAL { ?hoofd ceo:heeftNaam ?hnObj . ?hnObj ceo:naam ?hoofdNaam . }',
+      '    BIND(' + packedPair('?hoofd', '?hoofdNaam') + ' AS ?hoofdPacked)',
+      '  }',
+      '  OPTIONAL { ?co ceo:heeftRijksmonument ?rm . }',
+      '}',
+      'GROUP BY ?co'
+    ].join('\n');
+  }
+  function normalizeComplexRow(row) {
+    var hoofd = unpackPair(row.hoofdPackedL);
+    row.hoofdUriL = hoofd[0]; row.hoofdNaamL = hoofd[1];
+    return row;
+  }
+  // Reuses the existing 'complex' entity-page dimension (isOnderdeelVanComplex, already
+  // built for the Rijksmonument-side Complex facet) -- a complex row's "doorklikken" link
+  // opens the exact same page a monument's own Complex link opens.
+  function complexEntityLinkHtml(row) {
+    var n = row.nL ? parseInt(row.nL.value, 10) : 0;
+    var label = n ? ('Bekijk ' + n + ' rijksmonument' + (n === 1 ? '' : 'en') + ' →') : 'Geen rijksmonumenten gekoppeld';
+    if (!n) return '<span class="no-val">' + esc(label) + '</span>';
+    return entityLinkHtml('complex', row.co.value, label);
+  }
+
+  // WKT (Multi)Polygon -> nested [lat,lon] ring arrays, 3 levels deep
+  // ([polygon][ring][point]) so a single Leaflet L.polygon() call renders true
+  // multi-part geometry (several disjoint areas) and holes correctly. Same WKT
+  // capitalisation/spacing quirk as the point parser ("MultiPolygon (((" with a space).
+  // Hand-verified against real live WKT (a 25-point Gezicht ring) before use here.
+  function parseWktMultiPolygon(wkt) {
+    var startIdx = wkt.indexOf('(');
+    if (startIdx === -1) return null;
+    var isMulti = /^\s*multipolygon/i.test(wkt.trim());
+    var pos = startIdx;
+    function parse() {
+      pos++; // skip '('
+      var parts = [];
+      var buf = '';
+      var sawGroup = false;
+      while (pos < wkt.length) {
+        var ch = wkt[pos];
+        if (ch === '(') {
+          sawGroup = true;
+          parts.push(parse());
+        } else if (ch === ')') {
+          pos++;
+          if (!sawGroup && buf.trim()) parts.push(buf.trim());
+          return parts;
+        } else {
+          if (!sawGroup) buf += ch;
+          pos++;
+        }
+      }
+      return parts;
+    }
+    var tree = parse();
+    function toRingLatLng(str) {
+      return str.split(',').map(function (pair) {
+        var nums = pair.trim().split(/\s+/).map(Number);
+        return [nums[1], nums[0]]; // [lat, lon]
+      });
+    }
+    function polygonRings(polyNode) {
+      return polyNode.map(function (ringGroup) { return toRingLatLng(ringGroup[0]); });
+    }
+    return isMulti ? tree.map(polygonRings) : [polygonRings(tree)];
+  }
+
+  // ---------- entity pages (dim: monumentaard | juridischeStatus | functie | provincie | gemeente | plaats) ----------
+
+  // Which underlying type (and therefore root class/subject var/detail query) an entity
+  // dimension belongs to -- monumentaard..complex are all Rijksmonument-side dimensions;
+  // gezichtType/werelderfgoedType are their own types' single facet.
+  var ENTITY_DIM_TYPE = {
+    monumentaard: 'rijksmonument', juridischeStatus: 'rijksmonument', functie: 'rijksmonument',
+    provincie: 'rijksmonument', gemeente: 'rijksmonument', plaats: 'rijksmonument', complex: 'rijksmonument',
+    gezichtType: 'gezicht', gezichtStatus: 'gezicht', werelderfgoedType: 'werelderfgoed', werelderfgoedStatus: 'werelderfgoed'
+  };
+  var ENTITY_TYPE_META = {
+    rijksmonument: { subjVar: '?rm', rootClass: 'ceo:Rijksmonument' },
+    gezicht: { subjVar: '?g', rootClass: 'ceo:Gezicht' },
+    werelderfgoed: { subjVar: '?w', rootClass: 'ceo:Werelderfgoed' }
+  };
+  function buildEntityFilterClause(dim, id) {
+    if (dim === 'monumentaard') return 'GRAPH <' + INSTANTIES_GRAPH + '> { ?rm ceo:heeftMonumentAard <' + id + '> . }';
+    if (dim === 'juridischeStatus') return 'GRAPH <' + INSTANTIES_GRAPH + '> { ?rm ceo:heeftJuridischeStatus <' + id + '> . }';
+    if (dim === 'functie') return '?rm ceo:heeftOorspronkelijkeFunctie ?fObjE . ?fObjE ceo:heeftFunctieNaam <' + id + '> .';
+    if (dim === 'provincie') return '?rm ceo:heeftBasisregistratieRelatie ?brE . ?brE ceo:heeftProvincie <' + id + '> .';
+    if (dim === 'gemeente') return '?rm ceo:heeftBasisregistratieRelatie ?brE . ?brE ceo:heeftGemeente <' + id + '> .';
+    if (dim === 'complex') return '?rm ceo:isOnderdeelVanComplex <' + id + '> .';
+    if (dim === 'gezichtType') return buildGezichtEntityFilterClause(id);
+    if (dim === 'gezichtStatus') return buildGezichtStatusEntityFilterClause(id);
+    if (dim === 'werelderfgoedType') return buildWerelderfgoedEntityFilterClause(id);
+    if (dim === 'werelderfgoedStatus') return buildWerelderfgoedStatusEntityFilterClause(id);
+    // plaats: literal, not URI
+    return '?rm ceo:heeftBasisregistratieRelatie ?brE . ?brE ceo:heeftBAGRelatie ?bagE . ?bagE ceo:woonplaatsnaam ?woonplaatsE .\n  FILTER(STR(?woonplaatsE) = "' + sparqlEsc(id) + '")';
+  }
+  function buildEntityIdsQuery(dim, id, offset) {
+    var meta = ENTITY_TYPE_META[ENTITY_DIM_TYPE[dim]];
+    return [
+      CEO_PREFIXES,
+      'SELECT DISTINCT ' + meta.subjVar + ' WHERE {',
+      '  ' + meta.subjVar + ' a ' + meta.rootClass + ' .',
+      '  ' + buildEntityFilterClause(dim, id),
+      '}',
+      'ORDER BY ' + meta.subjVar,
+      'LIMIT ' + PAGE_SIZE + ' OFFSET ' + offset
+    ].join('\n');
+  }
+  function buildEntityCountQuery(dim, id) {
+    var meta = ENTITY_TYPE_META[ENTITY_DIM_TYPE[dim]];
+    return [
+      CEO_PREFIXES,
+      'SELECT (COUNT(DISTINCT ' + meta.subjVar + ') AS ?cnt) WHERE {',
+      '  ' + meta.subjVar + ' a ' + meta.rootClass + ' .',
+      '  ' + buildEntityFilterClause(dim, id),
+      '}'
+    ].join('\n');
+  }
+  // For URI-valued dims, the label is usually already known from the loaded facet list;
+  // this is the fallback for a value reached via a hash link before facets finished loading.
+  function buildEntityLabelQuery(id) {
+    return [CEO_PREFIXES, 'SELECT (SAMPLE(?label) AS ?labelL) WHERE { <' + id + '> skos:prefLabel ?label . }'].join('\n');
+  }
+  // Complex has no skos:prefLabel -- its name (when it has one) lives at
+  // heeftNaam -> naam, same path as a Rijksmonument's own name, plus complexnummer as a
+  // fallback identifier for the (common) case where a complex has no name at all.
+  function buildComplexLabelQuery(id) {
+    return [
+      CEO_PREFIXES,
+      'SELECT (SAMPLE(?naam) AS ?naamL) (SAMPLE(?nr) AS ?nrL) WHERE {',
+      '  OPTIONAL { <' + id + '> ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { <' + id + '> ceo:complexnummer ?nr . }',
+      '}'
+    ].join('\n');
+  }
+  function resolveEntityLabel(dim, id) {
+    if (dim === 'plaats') return Promise.resolve(id); // literal, id IS the label
+    if (dim === 'complex') {
+      return runQuery(buildComplexLabelQuery(id)).then(function (rows) {
+        if (!rows.length) return id;
+        var naam = rows[0].naamL ? rows[0].naamL.value : null;
+        var nr = rows[0].nrL ? rows[0].nrL.value : null;
+        if (naam && nr) return naam + ' (complex ' + nr + ')';
+        return naam || (nr ? 'Complex ' + nr : id);
+      });
+    }
+    var poolsByDim = {
+      monumentaard: [state.monumentaardOptions],
+      juridischeStatus: [state.juridischeStatusOptions],
+      functie: [state.functieOptions, state.functieSearchResults],
+      provincie: [state.provincieOptions],
+      gemeente: [state.gemeenteOptions, state.gemeenteSearchResults],
+      gezichtType: [state.gezichtTypeOptions],
+      werelderfgoedType: [state.werelderfgoedTypeOptions]
+    };
+    var pools = poolsByDim[dim] || [];
+    for (var i = 0; i < pools.length; i++) {
+      if (!pools[i]) continue;
+      var hit = pools[i].filter(function (o) { return o.id === id; })[0];
+      if (hit) return Promise.resolve(hit.label);
+    }
+    return runQuery(buildEntityLabelQuery(id)).then(function (rows) {
+      return rows.length && rows[0].labelL ? rows[0].labelL.value : id;
+    });
+  }
+
+  // ---------- map ----------
+
+  function buildMapPointsQuery(ids) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ?rm (SAMPLE(?wkt) AS ?wktL) (SAMPLE(?naam) AS ?naamL) (SAMPLE(?rmnr) AS ?rmnrL) WHERE {',
+      '  ' + valuesClause(ids),
+      '  GRAPH <' + PUNTEN_GRAPH + '> { ?rm ceo:heeftGeometrie ?geom . ?geom geo:asWKT ?wkt . }',
+      '  OPTIONAL { ?rm ceo:heeftNaam ?nObj . ?nObj ceo:naam ?naam . }',
+      '  OPTIONAL { ?rm ceo:rijksmonumentnummer ?rmnr . }',
+      '}',
+      'GROUP BY ?rm'
+    ].join('\n');
+  }
+
+  // WKT here is written as "Point (lon lat)" -- capitalised, WITH a space before the paren
+  // (RCE's own documented quirk; a strict "POINT(" match silently finds nothing).
+  function parseWktPoint(wkt) {
+    var m = /point\s*\(\s*([\-0-9.]+)\s+([\-0-9.]+)\s*\)/i.exec(wkt);
+    if (!m) return null;
+    return [parseFloat(m[2]), parseFloat(m[1])]; // [lat, lon] for Leaflet
+  }
+
+  // #mapEl is owned by Leaflet from the moment L.map() first runs -- writing to its
+  // innerHTML afterwards (e.g. to show a "loading" message) doesn't replace Leaflet's DOM,
+  // it just leaves stray text sitting alongside Leaflet's own panes/controls (Leaflet
+  // doesn't clear pre-existing children, it appends its own). All status text -- loading,
+  // "no filter yet", "no results", errors -- goes through this sibling element instead, so
+  // #mapEl itself is only ever touched by Leaflet.
+  function setMapStatus(text) {
+    var el = document.getElementById('mapStatus');
+    if (!text) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false; el.textContent = text;
+  }
+
+  var leafletMap = null;
+  var leafletShapes = []; // markers (Rijksmonument) or polygons (Gezicht/Werelderfgoed) -- same map instance, one at a time
+  function ensureLeafletMap() {
+    if (leafletMap) return;
+    leafletMap = L.map(document.getElementById('mapEl')).setView([52.1, 5.3], 7); // NL-centered default
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-bijdragers'
+    }).addTo(leafletMap);
+  }
+  function clearLeafletShapes() {
+    leafletShapes.forEach(function (s) { leafletMap.removeLayer(s); });
+    leafletShapes = [];
+  }
+
+  var POLYGON_EXTERNAL_LABEL = { gezicht: 'Meer info', werelderfgoed: 'Bekijk op UNESCO' };
+
+  function renderMap(rows) {
+    ensureLeafletMap();
+    clearLeafletShapes();
+    var bt = state.browseType;
+    var bounds = [];
+    rows.forEach(function (r) {
+      var naam = r.naamL && r.naamL.value ? r.naamL.value : '(naam onbekend)';
+      if (bt === 'rijksmonument') {
+        var pt = r.wktL ? parseWktPoint(r.wktL.value) : null;
+        if (!pt) return;
+        bounds.push(pt);
+        var rmnr = r.rmnrL ? r.rmnrL.value : null;
+        var link = rmnr ? '<br><a href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">Monumentenregister &rarr;</a>' : '';
+        var marker = L.marker(pt).addTo(leafletMap);
+        marker.bindPopup('<div class="map-popup"><strong>' + esc(naam) + '</strong>' + link + '</div>');
+        leafletShapes.push(marker);
+      } else {
+        var mp = r.wktL ? parseWktMultiPolygon(r.wktL.value) : null;
+        if (!mp) return;
+        mp.forEach(function (ringsOfOnePolygon) { ringsOfOnePolygon.forEach(function (ring) { bounds = bounds.concat(ring); }); });
+        var url = r.urlL ? r.urlL.value : null;
+        var link2 = url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">' + POLYGON_EXTERNAL_LABEL[bt] + ' &rarr;</a>' : '';
+        var poly = L.polygon(mp, { color: '#e0705f', weight: 2, fillOpacity: 0.25 }).addTo(leafletMap);
+        poly.bindPopup('<div class="map-popup"><strong>' + esc(naam) + '</strong>' + link2 + '</div>');
+        leafletShapes.push(poly);
+      }
+    });
+    if (bounds.length) {
+      leafletMap.fitBounds(bounds, { maxZoom: 15, padding: [30, 30] });
+      setMapStatus(null);
+    } else {
+      setMapStatus(bt === 'rijksmonument' ? 'Geen van de monumenten op deze pagina heeft een officieel geregistreerd punt.' : 'Geen geometrie gevonden voor deze pagina.');
+    }
+  }
+
+  function mapRowIdField() { return state.browseType === 'rijksmonument' ? 'rm' : state.browseType === 'gezicht' ? 'g' : 'w'; }
+
+  function loadMap() {
+    if (!state.lastRows.length) {
+      if (leafletMap) clearLeafletShapes();
+      setMapStatus('Geen resultaten op deze pagina.');
+      return;
+    }
+    setMapStatus('Bezig met laden…');
+    var idField = mapRowIdField();
+    var ids = state.lastRows.map(function (r) { return r[idField].value; });
+    var bt = state.browseType;
+    var query = bt === 'rijksmonument' ? buildMapPointsQuery(ids) : bt === 'gezicht' ? buildGezichtMapQuery(ids) : buildWerelderfgoedMapQuery(ids);
+    runQuery(query).then(function (rows) {
+      state.mapPoints = rows;
+      renderMap(rows);
+    }).catch(function () {
+      setMapStatus('Kon kaartgegevens niet laden.');
+    });
+  }
+
+  // ---------- rendering ----------
+
+  function localId(uri) { return uri.split('/').pop(); }
+
+  function applyFacetOpenState(facetId) {
+    var open = !!state.facetOpen[facetId];
+    document.getElementById('facetToggle-' + facetId).setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.getElementById('facetBody-' + facetId).hidden = !open;
+  }
+
+  function renderFacetList(elId, options, activeVal, onPick) {
+    var el = document.getElementById(elId);
+    if (!options.length) { el.innerHTML = '<div class="type-empty">Geen waarden gevonden.</div>'; return; }
+    el.innerHTML = '';
+    options.forEach(function (o) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'type-opt' + (activeVal === o.id ? ' active' : '');
+      btn.innerHTML = '<span class="lbl">' + esc(o.label) + '</span><span class="n tabular">' + (o.count === null ? '…' : o.count.toLocaleString('nl-NL')) + '</span>';
+      btn.addEventListener('click', function () { onPick(o); });
+      el.appendChild(btn);
+    });
+  }
+
+  function renderMonumentaardFacet() {
+    if (state.monumentaard) state.facetOpen.monumentaard = true;
+    renderFacetList('monumentaardList', state.monumentaardOptions, state.monumentaard, function (o) {
+      state.monumentaard = state.monumentaard === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderMonumentaardFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('monumentaard');
+  }
+  function renderJuridischeStatusFacet() {
+    if (state.juridischeStatus) state.facetOpen.juridischeStatus = true;
+    renderFacetList('juridischeStatusList', state.juridischeStatusOptions, state.juridischeStatus, function (o) {
+      state.juridischeStatus = state.juridischeStatus === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderJuridischeStatusFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('juridischeStatus');
+  }
+  function renderFunctieFacet() {
+    var opts = state.functieSearchResults || state.functieOptions;
+    if (state.functieUri) state.facetOpen.functie = true;
+    renderFacetList('functieList', opts, state.functieUri, function (o) {
+      state.functieUri = state.functieUri === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderFunctieFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('functie');
+  }
+  function renderProvincieFacet() {
+    if (state.provincieUri) state.facetOpen.provincie = true;
+    renderFacetList('provincieList', state.provincieOptions, state.provincieUri, function (o) {
+      state.provincieUri = state.provincieUri === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderProvincieFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('provincie');
+  }
+  function renderGemeenteFacet() {
+    var opts = state.gemeenteSearchResults || state.gemeenteOptions;
+    if (state.gemeenteUri) state.facetOpen.gemeente = true;
+    renderFacetList('gemeenteList', opts, state.gemeenteUri, function (o) {
+      state.gemeenteUri = state.gemeenteUri === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderGemeenteFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('gemeente');
+  }
+  function renderPlaatsFacet() {
+    var opts = state.plaatsSearchResults || state.plaatsOptions;
+    if (state.plaats) state.facetOpen.plaats = true;
+    renderFacetList('plaatsList', opts, state.plaats, function (o) {
+      state.plaats = state.plaats === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderPlaatsFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('plaats');
+  }
+
+  function renderGezichtTypeFacet() {
+    if (state.gezichtTypeUri) state.facetOpen.gezichtType = true;
+    renderFacetList('gezichtTypeList', state.gezichtTypeOptions, state.gezichtTypeUri, function (o) {
+      state.gezichtTypeUri = state.gezichtTypeUri === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderGezichtTypeFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('gezichtType');
+  }
+  function renderWerelderfgoedTypeFacet() {
+    if (state.werelderfgoedTypeUri) state.facetOpen.werelderfgoedType = true;
+    renderFacetList('werelderfgoedTypeList', state.werelderfgoedTypeOptions, state.werelderfgoedTypeUri, function (o) {
+      state.werelderfgoedTypeUri = state.werelderfgoedTypeUri === o.id ? null : o.id;
+      state.offset = 0; state.openRow = null;
+      renderWerelderfgoedTypeFacet(); maybeLoadResults();
+    });
+    applyFacetOpenState('werelderfgoedType');
+  }
+
+  function updateActiveChipsVisibility() {
+    var chipsEl = document.getElementById('activeChips');
+    chipsEl.hidden = chipsEl.children.length === 0;
+  }
+
+  function clearFilterChip(key) {
+    if (key === 'monumentaard') { state.monumentaard = null; renderMonumentaardFacet(); }
+    else if (key === 'juridischeStatus') { state.juridischeStatus = null; renderJuridischeStatusFacet(); }
+    else if (key === 'functie') { state.functieUri = null; renderFunctieFacet(); }
+    else if (key === 'provincie') { state.provincieUri = null; renderProvincieFacet(); }
+    else if (key === 'gemeente') { state.gemeenteUri = null; renderGemeenteFacet(); }
+    else if (key === 'plaats') { state.plaats = null; renderPlaatsFacet(); }
+    else if (key === 'gezichtType') { state.gezichtTypeUri = null; renderGezichtTypeFacet(); }
+    else if (key === 'werelderfgoedType') { state.werelderfgoedTypeUri = null; renderWerelderfgoedTypeFacet(); }
+    else if (key === 'search') {
+      clearTimeout(searchTimer);
+      state.search = ''; document.getElementById('searchInput').value = '';
+    }
+    state.offset = 0;
+    maybeLoadResults();
+  }
+
+  var RESULT_COUNT_LABEL = { rijksmonument: 'monumenten', gezicht: 'gezichten', werelderfgoed: 'werelderfgoedlocaties', complex: 'complexen' };
+
+  function renderResultCount(count) {
+    document.getElementById('resultCount').innerHTML =
+      '<b class="tabular">' + (count === null ? '&hellip;' : count.toLocaleString('nl-NL')) + '</b> ' + RESULT_COUNT_LABEL[state.browseType];
+
+    var chips = [];
+    if (state.browseType === 'rijksmonument') {
+      if (state.monumentaard) { var a = state.monumentaardOptions.filter(function (o) { return o.id === state.monumentaard; })[0]; if (a) chips.push({ key: 'monumentaard', label: a.label }); }
+      if (state.juridischeStatus) { var j = state.juridischeStatusOptions.filter(function (o) { return o.id === state.juridischeStatus; })[0]; if (j) chips.push({ key: 'juridischeStatus', label: j.label }); }
+      if (state.functieUri) {
+        var f = (state.functieSearchResults || state.functieOptions).filter(function (o) { return o.id === state.functieUri; })[0];
+        chips.push({ key: 'functie', label: f ? f.label : 'functie' });
+      }
+      if (state.provincieUri) { var p = state.provincieOptions.filter(function (o) { return o.id === state.provincieUri; })[0]; if (p) chips.push({ key: 'provincie', label: p.label }); }
+      if (state.gemeenteUri) {
+        var g = (state.gemeenteSearchResults || state.gemeenteOptions).filter(function (o) { return o.id === state.gemeenteUri; })[0];
+        chips.push({ key: 'gemeente', label: g ? g.label : 'gemeente' });
+      }
+      if (state.plaats) chips.push({ key: 'plaats', label: state.plaats });
+    } else if (state.browseType === 'gezicht') {
+      if (state.gezichtTypeUri) { var gt = state.gezichtTypeOptions.filter(function (o) { return o.id === state.gezichtTypeUri; })[0]; if (gt) chips.push({ key: 'gezichtType', label: gt.label }); }
+    } else if (state.browseType === 'werelderfgoed') {
+      if (state.werelderfgoedTypeUri) { var wt = state.werelderfgoedTypeOptions.filter(function (o) { return o.id === state.werelderfgoedTypeUri; })[0]; if (wt) chips.push({ key: 'werelderfgoedType', label: wt.label }); }
+    }
+    if (state.search) chips.push({ key: 'search', label: '"' + state.search + '"' });
+
+    var chipsEl = document.getElementById('activeChips');
+    chipsEl.innerHTML = chips.map(function (c) {
+      return '<span class="filter-chip">' + esc(c.label) + '<button type="button" data-clear="' + c.key + '" title="Filter verwijderen" aria-label="' + esc(c.label) + ' verwijderen">&times;</button></span>';
+    }).join('');
+    updateActiveChipsVisibility();
+  }
+
+  function entityLinkHtml(dim, id, label) {
+    if (!id || !label || label === '—') return esc(label || '—');
+    return '<button type="button" class="entity-link" data-dim="' + dim + '" data-id="' + esc(id) + '">' + esc(label) + '</button>';
+  }
+  function handleEntityLinkClick(e) {
+    var el = e.target.closest('.entity-link');
+    if (!el) return false;
+    e.stopPropagation();
+    openEntityPage(el.getAttribute('data-dim'), el.getAttribute('data-id'));
+    return true;
+  }
+
+  // A single-record reference (e.g. a complex's hoofdobject) points at one specific
+  // rijksmonument/gezicht/werelderfgoed, not a facet value with a list of members -- so it
+  // opens the record permalink page (see openRecordPage) instead of an entity list page.
+  var RECORD_TYPE_LABEL = { rijksmonument: 'Rijksmonument', gezicht: 'Gezicht', werelderfgoed: 'Werelderfgoed' };
+  function recordLinkHtml(type, id, label) {
+    if (!id || !label) return '<span class="no-val">onbekend</span>';
+    return '<button type="button" class="record-link" data-record-type="' + type + '" data-record-id="' + esc(id) + '">' + esc(label) + '</button>';
+  }
+  function handleRecordLinkClick(e) {
+    var el = e.target.closest('.record-link');
+    if (!el) return false;
+    e.stopPropagation();
+    openRecordPage(el.getAttribute('data-record-type'), el.getAttribute('data-record-id'));
+    return true;
+  }
+
+  function detailFieldsHtmlRijksmonument(row) {
+    var adres = row.adresL ? row.adresL.value : null;
+    var woonplaats = row.woonplaatsL ? row.woonplaatsL.value : null;
+    var datum = row.datumL ? row.datumL.value : null;
+    var complexUri = row.complexUriL ? row.complexUriL.value : null;
+    var complexNaam = row.complexNaamL ? row.complexNaamL.value : null;
+    var complexNr = row.complexNrL ? row.complexNrL.value : null;
+    var complexLabel = complexNaam || (complexNr ? 'Complex ' + complexNr : null);
+    return '<dl class="detail-grid">' +
+      '<div><dt>Monumentaard</dt><dd>' + entityLinkHtml('monumentaard', row.aardUriL ? row.aardUriL.value : null, row.aardL ? row.aardL.value : '—') + '</dd></div>' +
+      '<div><dt>Juridische status</dt><dd>' + entityLinkHtml('juridischeStatus', row.statusUriL ? row.statusUriL.value : null, row.statusL ? row.statusL.value : '—') + '</dd></div>' +
+      '<div><dt>Functie</dt><dd>' + entityLinkHtml('functie', row.functieUriL ? row.functieUriL.value : null, row.functieL ? row.functieL.value : '—') + '</dd></div>' +
+      '<div><dt>Provincie</dt><dd>' + entityLinkHtml('provincie', row.provUriL ? row.provUriL.value : null, row.provL ? row.provL.value : '—') + '</dd></div>' +
+      '<div><dt>Gemeente</dt><dd>' + entityLinkHtml('gemeente', row.gemUriL ? row.gemUriL.value : null, row.gemL ? row.gemL.value : '—') + '</dd></div>' +
+      '<div><dt>Plaats</dt><dd>' + (woonplaats ? entityLinkHtml('plaats', woonplaats, woonplaats) : '<span class="no-val">onbekend</span>') + '</dd></div>' +
+      '<div><dt>Adres</dt><dd>' + (adres ? esc(adres) : '<span class="no-val">onbekend</span>') + '</dd></div>' +
+      '<div><dt>Datum inschrijving</dt><dd>' + (datum ? '<span class="tabular">' + esc(datum) + '</span>' : '<span class="no-val">onbekend</span>') + '</dd></div>' +
+      '<div><dt>Complex</dt><dd>' + (complexUri && complexLabel ? entityLinkHtml('complex', complexUri, complexLabel) : '<span class="no-val">geen</span>') + '</dd></div>' +
+      '</dl>';
+  }
+
+  function detailRowHtmlRijksmonument(row, colspan) {
+    var rmnr = row.rmnrL ? row.rmnrL.value : null;
+    var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+      '<p class="detail-title">' + esc(naam) + '</p>' +
+      '<p class="detail-sub">' + (rmnr ? 'Rijksmonumentnummer ' + esc(rmnr) : 'Geen rijksmonumentnummer bekend') + '</p>' +
+      detailFieldsHtmlRijksmonument(row) +
+      (rmnr ? '<a class="register-link" href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">Bekijk in het Monumentenregister &rarr;</a>' : '') +
+      '</td></tr>';
+  }
+
+  function detailFieldsHtmlGezicht(row) {
+    var bijzonder = row.bijzonderL ? row.bijzonderL.value : null;
+    return '<dl class="detail-grid">' +
+      '<div><dt>Type</dt><dd>' + entityLinkHtml('gezichtType', row.typeUriL ? row.typeUriL.value : null, row.typeL ? row.typeL.value : '—') + '</dd></div>' +
+      '<div><dt>Status</dt><dd>' + entityLinkHtml('gezichtStatus', row.statusUriL ? row.statusUriL.value : null, row.statusL ? row.statusL.value : '—') + '</dd></div>' +
+      '<div><dt>Bijzonder gebied</dt><dd>' + (bijzonder != null ? (bijzonder === 'true' ? 'ja' : 'nee') : '<span class="no-val">onbekend</span>') + '</dd></div>' +
+      '</dl>';
+  }
+  function detailRowHtmlGezicht(row, colspan) {
+    var nr = row.nrL ? row.nrL.value : null;
+    var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+    var url = row.urlL ? row.urlL.value : null;
+    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+      '<p class="detail-title">' + esc(naam) + '</p>' +
+      '<p class="detail-sub">' + (nr ? 'Gezichtsnummer ' + esc(nr) : 'Geen gezichtsnummer bekend') + '</p>' +
+      detailFieldsHtmlGezicht(row) +
+      (url ? '<a class="register-link" href="' + esc(url) + '" target="_blank" rel="noopener">Meer info op kennis.cultureelerfgoed.nl &rarr;</a>' : '') +
+      '</td></tr>';
+  }
+
+  function detailFieldsHtmlWerelderfgoed(row) {
+    var jaar = row.jaarL ? row.jaarL.value : null;
+    return '<dl class="detail-grid">' +
+      '<div><dt>Type</dt><dd>' + entityLinkHtml('werelderfgoedType', row.typeUriL ? row.typeUriL.value : null, row.typeL ? row.typeL.value : '—') + '</dd></div>' +
+      '<div><dt>Status</dt><dd>' + entityLinkHtml('werelderfgoedStatus', row.statusUriL ? row.statusUriL.value : null, row.statusL ? row.statusL.value : '—') + '</dd></div>' +
+      '<div><dt>Jaar van inschrijving</dt><dd>' + (jaar ? '<span class="tabular">' + esc(jaar) + '</span>' : '<span class="no-val">onbekend</span>') + '</dd></div>' +
+      '</dl>';
+  }
+  function detailRowHtmlWerelderfgoed(row, colspan) {
+    var nr = row.nrL ? row.nrL.value : null;
+    var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+    var url = row.urlL ? row.urlL.value : null;
+    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+      '<p class="detail-title">' + esc(naam) + '</p>' +
+      '<p class="detail-sub">' + (nr ? 'Werelderfgoednummer ' + esc(nr) : 'Geen werelderfgoednummer bekend') + '</p>' +
+      detailFieldsHtmlWerelderfgoed(row) +
+      (url ? '<a class="register-link" href="' + esc(url) + '" target="_blank" rel="noopener">Bekijk op de UNESCO-website &rarr;</a>' : '') +
+      '</td></tr>';
+  }
+
+  function detailFieldsHtmlComplex(row) {
+    var hoofdUri = row.hoofdUriL ? row.hoofdUriL.value : null;
+    // Same "(naam onbekend)" fallback used everywhere else in the app -- a hoofdobject can be
+    // a genuinely nameless rijksmonument (live-verified, e.g. complex 511109's hoofdobject,
+    // rijksmonumentnummer 511110), which is still a real, clickable record, not a missing one.
+    var hoofdNaam = row.hoofdNaamL && row.hoofdNaamL.value ? row.hoofdNaamL.value : (hoofdUri ? '(naam onbekend)' : null);
+    return '<dl class="detail-grid">' +
+      '<div><dt>Hoofdobject</dt><dd>' + recordLinkHtml('rijksmonument', hoofdUri, hoofdNaam) + '</dd></div>' +
+      '<div><dt>Onderdelen</dt><dd>' + complexEntityLinkHtml(row) + '</dd></div>' +
+      '</dl>';
+  }
+  function detailRowHtmlComplex(row, colspan) {
+    var nr = row.nrL ? row.nrL.value : null;
+    var naam = row.naamL && row.naamL.value ? row.naamL.value : (nr ? 'Complex ' + nr : '(naam onbekend)');
+    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+      '<p class="detail-title">' + esc(naam) + '</p>' +
+      '<p class="detail-sub">' + (nr ? 'Complexnummer ' + esc(nr) : 'Geen complexnummer bekend') + '</p>' +
+      detailFieldsHtmlComplex(row) +
+      '</td></tr>';
+  }
+
+  var TABLE_COLSPAN = { rijksmonument: 4, gezicht: 3, werelderfgoed: 3, complex: 3 };
+
+  function renderTable(rows) {
+    if (state.browseType === 'gezicht') return renderTableGezicht(rows);
+    if (state.browseType === 'werelderfgoed') return renderTableWerelderfgoed(rows);
+    if (state.browseType === 'complex') return renderTableComplex(rows);
+    return renderTableRijksmonument(rows);
+  }
+
+  function renderTableRijksmonument(rows) {
+    var body = document.getElementById('resultsBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="4" class="state-msg">Geen monumenten gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var id = row.rm.value;
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var gem = row.gemL ? row.gemL.value : '—';
+      var functie = row.functieL ? row.functieL.value : '—';
+      var status = row.statusL ? row.statusL.value : '—';
+      var mainRow = '<tr class="row' + (state.openRow === id ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+        '<td class="naam-cell"><button type="button" class="row-toggle">' + esc(naam) + '</button></td>' +
+        '<td>' + esc(gem) + '</td>' +
+        '<td>' + esc(functie) + '</td>' +
+        '<td>' + esc(status) + '</td>' +
+        '</tr>';
+      return mainRow + (state.openRow === id ? detailRowHtmlRijksmonument(row, 4) : '');
+    }).join('');
+  }
+
+  function renderTableGezicht(rows) {
+    var body = document.getElementById('resultsBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="3" class="state-msg">Geen gezichten gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var id = row.g.value;
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var type = row.typeL ? row.typeL.value : '—';
+      var nr = row.nrL ? row.nrL.value : '—';
+      var mainRow = '<tr class="row' + (state.openRow === id ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+        '<td class="naam-cell"><button type="button" class="row-toggle">' + esc(naam) + '</button></td>' +
+        '<td>' + esc(type) + '</td>' +
+        '<td>' + esc(nr) + '</td>' +
+        '</tr>';
+      return mainRow + (state.openRow === id ? detailRowHtmlGezicht(row, 3) : '');
+    }).join('');
+  }
+
+  function renderTableWerelderfgoed(rows) {
+    var body = document.getElementById('resultsBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="3" class="state-msg">Geen werelderfgoed gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var id = row.w.value;
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var type = row.typeL ? row.typeL.value : '—';
+      var jaar = row.jaarL ? row.jaarL.value : '—';
+      var mainRow = '<tr class="row' + (state.openRow === id ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+        '<td class="naam-cell"><button type="button" class="row-toggle">' + esc(naam) + '</button></td>' +
+        '<td>' + esc(type) + '</td>' +
+        '<td class="tabular">' + esc(jaar) + '</td>' +
+        '</tr>';
+      return mainRow + (state.openRow === id ? detailRowHtmlWerelderfgoed(row, 3) : '');
+    }).join('');
+  }
+
+  function renderTableComplex(rows) {
+    var body = document.getElementById('resultsBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="3" class="state-msg">Geen complexen gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var id = row.co.value;
+      var nr = row.nrL ? row.nrL.value : null;
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : (nr ? 'Complex ' + nr : '(naam onbekend)');
+      var n = row.nL ? parseInt(row.nL.value, 10) : 0;
+      var mainRow = '<tr class="row' + (state.openRow === id ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+        '<td class="naam-cell"><button type="button" class="row-toggle">' + esc(naam) + '</button></td>' +
+        '<td>' + (nr ? esc(nr) : '—') + '</td>' +
+        '<td class="tabular">' + n + '</td>' +
+        '</tr>';
+      return mainRow + (state.openRow === id ? detailRowHtmlComplex(row, 3) : '');
+    }).join('');
+  }
+
+  function updatePager(prefix, offset, count, total) {
+    document.getElementById('prevBtn' + prefix).disabled = offset === 0;
+    document.getElementById('nextBtn' + prefix).disabled = total !== null && offset + PAGE_SIZE >= total;
+    var page = Math.floor(offset / PAGE_SIZE) + 1;
+    document.getElementById('pageLabel' + prefix).textContent = 'pagina ' + page + (total ? ' / ' + Math.max(1, Math.ceil(total / PAGE_SIZE)) : '');
+  }
+
+  var reqToken = 0;
+  var lastCount = null;
+
+  function hasActiveFilter() {
+    if (state.browseType === 'rijksmonument') return hasActiveFilterRijksmonument();
+    return true; // Gezicht/Werelderfgoed/Complex are small + fast (see performance note) -- always eager-load
+  }
+  function hasActiveFilterRijksmonument() {
+    return !!(state.search || state.monumentaard || state.juridischeStatus || state.functieUri ||
+      state.provincieUri || state.gemeenteUri || state.plaats);
+  }
+
+  // No filter/search active on Rijksmonument -> don't run the (slow, see performance note
+  // above) unfiltered full-collection browse query at all. A first-time visitor never
+  // triggers a 20-60s wait just by loading the page; they only pay that cost once they've
+  // actually narrowed something down. Gezicht/Werelderfgoed never hit this (hasActiveFilter
+  // is always true for them), since their unfiltered browse is fast.
+  function showBrowsePlaceholder() {
+    lastCount = null;
+    document.getElementById('resultCount').innerHTML = 'Kies een filter, of zoek op naam of nummer';
+    document.getElementById('resultsBody').innerHTML = '<tr><td colspan="' + TABLE_COLSPAN[state.browseType] + '" class="state-msg">Kies links een filter, of zoek op naam of rijksmonumentnummer hierboven, om monumenten te zien &mdash; de volledige, ongefilterde collectie (160.000+) laden zou te lang duren.</td></tr>';
+    document.getElementById('activeChips').hidden = true;
+    updatePager('T', 0, null, 0);
+    updatePager('M', 0, null, 0);
+    if (state.tab === 'map') {
+      state.lastRows = [];
+      if (leafletMap) clearLeafletShapes();
+      setMapStatus('Kies eerst een filter of zoekterm.');
+    }
+  }
+
+  function maybeLoadResults() {
+    if (hasActiveFilter()) loadResults();
+    else showBrowsePlaceholder();
+  }
+
+  function loadResults() {
+    if (state.browseType === 'gezicht') return loadResultsGezicht();
+    if (state.browseType === 'werelderfgoed') return loadResultsWerelderfgoed();
+    if (state.browseType === 'complex') return loadResultsComplex();
+    return loadResultsRijksmonument();
+  }
+
+  function loadResultsRijksmonument() {
+    var token = ++reqToken;
+    document.getElementById('resultsBody').innerHTML = '<tr><td colspan="4" class="state-msg">Bezig met zoeken&hellip;</td></tr>';
+    // The map only re-renders once the ids+detail chain below finishes (a full round trip
+    // on this endpoint can take several seconds) -- without this, switching to a filtered
+    // Kaart-tab left whatever the map last showed (often the "Kies eerst..." placeholder
+    // from before any filter was active) sitting there looking like a final answer instead
+    // of a stale, still-loading one.
+    if (state.tab === 'map') setMapStatus('Bezig met laden…');
+
+    runQuery(buildCountQuery()).then(function (rows) {
+      if (token !== reqToken) return;
+      lastCount = rows.length ? parseInt(rows[0].cnt.value, 10) : 0;
+      renderResultCount(lastCount);
+      updatePager('T', state.offset, lastCount, lastCount);
+      updatePager('M', state.offset, lastCount, lastCount);
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+    });
+
+    runQuery(buildIdsQuery()).then(function (idRows) {
+      if (token !== reqToken) return [];
+      if (!idRows.length) { state.lastRows = []; renderTable([]); if (state.tab === 'map') loadMap(); return []; }
+      var ids = idRows.map(function (r) { return r.rm.value; });
+      return runQuery(buildDetailQuery(ids)).then(function (detailRows) {
+        if (token !== reqToken) return;
+        var byId = {};
+        detailRows.forEach(function (r) { byId[r.rm.value] = normalizeDetailRow(r); });
+        var ordered = ids.map(function (id) { return byId[id] || { rm: { value: id } }; });
+        state.lastRows = ordered;
+        renderTable(ordered);
+        if (state.tab === 'map') loadMap();
+      });
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="4" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+    });
+  }
+
+  function loadResultsGezicht() {
+    var token = ++reqToken;
+    document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Bezig met zoeken&hellip;</td></tr>';
+    if (state.tab === 'map') setMapStatus('Bezig met laden…');
+
+    runQuery(buildGezichtCountQuery()).then(function (rows) {
+      if (token !== reqToken) return;
+      lastCount = rows.length ? parseInt(rows[0].cnt.value, 10) : 0;
+      renderResultCount(lastCount);
+      updatePager('T', state.offset, lastCount, lastCount);
+      updatePager('M', state.offset, lastCount, lastCount);
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+    });
+
+    runQuery(buildGezichtIdsQuery()).then(function (idRows) {
+      if (token !== reqToken) return [];
+      if (!idRows.length) { state.lastRows = []; renderTable([]); if (state.tab === 'map') loadMap(); return []; }
+      var ids = idRows.map(function (r) { return r.g.value; });
+      return runQuery(buildGezichtDetailQuery(ids)).then(function (detailRows) {
+        if (token !== reqToken) return;
+        var byId = {};
+        detailRows.forEach(function (r) { byId[r.g.value] = normalizeGezichtRow(r); });
+        var ordered = ids.map(function (id) { return byId[id] || { g: { value: id } }; });
+        state.lastRows = ordered;
+        renderTable(ordered);
+        if (state.tab === 'map') loadMap();
+      });
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+    });
+  }
+
+  function loadResultsWerelderfgoed() {
+    var token = ++reqToken;
+    document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Bezig met zoeken&hellip;</td></tr>';
+    if (state.tab === 'map') setMapStatus('Bezig met laden…');
+
+    runQuery(buildWerelderfgoedCountQuery()).then(function (rows) {
+      if (token !== reqToken) return;
+      lastCount = rows.length ? parseInt(rows[0].cnt.value, 10) : 0;
+      renderResultCount(lastCount);
+      updatePager('T', state.offset, lastCount, lastCount);
+      updatePager('M', state.offset, lastCount, lastCount);
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+    });
+
+    runQuery(buildWerelderfgoedIdsQuery()).then(function (idRows) {
+      if (token !== reqToken) return [];
+      if (!idRows.length) { state.lastRows = []; renderTable([]); if (state.tab === 'map') loadMap(); return []; }
+      var ids = idRows.map(function (r) { return r.w.value; });
+      return runQuery(buildWerelderfgoedDetailQuery(ids)).then(function (detailRows) {
+        if (token !== reqToken) return;
+        var byId = {};
+        detailRows.forEach(function (r) { byId[r.w.value] = normalizeWerelderfgoedRow(r); });
+        var ordered = ids.map(function (id) { return byId[id] || { w: { value: id } }; });
+        state.lastRows = ordered;
+        renderTable(ordered);
+        if (state.tab === 'map') loadMap();
+      });
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+    });
+  }
+
+  // Complex has no geometry of its own (no heeftGeometrie -- verified live), so its Kaart
+  // tab is hidden entirely (see updateTypeChrome) and this never touches the map.
+  function loadResultsComplex() {
+    var token = ++reqToken;
+    document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Bezig met zoeken&hellip;</td></tr>';
+
+    runQuery(buildComplexCountQuery()).then(function (rows) {
+      if (token !== reqToken) return;
+      lastCount = rows.length ? parseInt(rows[0].cnt.value, 10) : 0;
+      renderResultCount(lastCount);
+      updatePager('T', state.offset, lastCount, lastCount);
+      updatePager('M', state.offset, lastCount, lastCount);
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+    });
+
+    runQuery(buildComplexIdsQuery()).then(function (idRows) {
+      if (token !== reqToken) return [];
+      if (!idRows.length) { state.lastRows = []; renderTable([]); return []; }
+      var ids = idRows.map(function (r) { return r.co.value; });
+      return runQuery(buildComplexDetailQuery(ids)).then(function (detailRows) {
+        if (token !== reqToken) return;
+        var byId = {};
+        detailRows.forEach(function (r) { byId[r.co.value] = normalizeComplexRow(r); });
+        var ordered = ids.map(function (id) { return byId[id] || { co: { value: id } }; });
+        state.lastRows = ordered;
+        renderTable(ordered);
+      });
+    }).catch(function () {
+      if (token !== reqToken) return;
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+    });
+  }
+
+  // Fixed-vocabulary facets: render the known values immediately (no query needed for the
+  // list itself), then fill in counts via small parallel per-value queries -- see the
+  // performance note above buildSingleCountQuery for why this beats one aggregate query.
+  function loadFixedFacet(kind, fixedList, optionsKey, noteElId, renderFn) {
+    state[optionsKey] = fixedList.map(function (o) { return { id: o.id, label: o.label, count: null }; });
+    document.getElementById(noteElId).textContent = fixedList.length;
+    renderFn();
+    fixedList.forEach(function (o) {
+      runQuery(buildSingleCountQuery(kind, o.id)).then(function (rows) {
+        var opt = state[optionsKey].filter(function (x) { return x.id === o.id; })[0];
+        if (opt) opt.count = rows.length ? parseInt(rows[0].cnt.value, 10) : 0;
+        renderFn();
+      }).catch(function () { /* count stays null -> shown as blank, list itself still usable */ });
+    });
+  }
+
+  // Open-vocabulary facets (functie/gemeente/plaats) deliberately do NOT eager-load a top-N
+  // list -- see the performance note above buildSingleCountQuery. Search-only.
+  function showSearchOnlyPlaceholder(listElId, noteElId) {
+    document.getElementById(listElId).innerHTML = '<div class="type-empty">Typ minimaal 2 tekens om te zoeken.</div>';
+    document.getElementById(noteElId).textContent = 'zoeken';
+  }
+
+  function loadFacets() {
+    if (state.browseType === 'gezicht') return loadFacetsGezicht();
+    if (state.browseType === 'werelderfgoed') return loadFacetsWerelderfgoed();
+    if (state.browseType === 'complex') return; // no facets of its own -- see the note in the sidebar
+    return loadFacetsRijksmonument();
+  }
+
+  function loadFacetsRijksmonument() {
+    loadFixedFacet('monumentaard', MONUMENTAARD_FIXED, 'monumentaardOptions', 'monumentaardFacetNote', renderMonumentaardFacet);
+    loadFixedFacet('juridischeStatus', JURIDISCHE_STATUS_FIXED, 'juridischeStatusOptions', 'juridischeStatusFacetNote', renderJuridischeStatusFacet);
+    loadFixedFacet('provincie', PROVINCIE_FIXED, 'provincieOptions', 'provincieFacetNote', renderProvincieFacet);
+    showSearchOnlyPlaceholder('functieList', 'functieFacetNote');
+    showSearchOnlyPlaceholder('gemeenteList', 'gemeenteFacetNote');
+    showSearchOnlyPlaceholder('plaatsList', 'plaatsFacetNote');
+  }
+
+  // Gezicht/Werelderfgoed: small enough (954 / 18) that the single "type" facet loads as one
+  // live aggregate, cached after first load (a type-tab visited a second time just re-renders).
+  function loadFacetsGezicht() {
+    if (state.gezichtTypeOptions.length) { renderGezichtTypeFacet(); return; }
+    runQuery(buildGezichtTypeFacetQuery()).then(function (rows) {
+      state.gezichtTypeOptions = rows.map(function (r) { return { id: r.uri.value, label: r.labelL.value, count: parseInt(r.cnt.value, 10) }; });
+      document.getElementById('gezichtTypeFacetNote').textContent = state.gezichtTypeOptions.length;
+      renderGezichtTypeFacet();
+    }).catch(function () { document.getElementById('gezichtTypeList').innerHTML = '<div class="type-empty">Kon niet laden.</div>'; });
+  }
+  function loadFacetsWerelderfgoed() {
+    if (state.werelderfgoedTypeOptions.length) { renderWerelderfgoedTypeFacet(); return; }
+    runQuery(buildWerelderfgoedTypeFacetQuery()).then(function (rows) {
+      state.werelderfgoedTypeOptions = rows.map(function (r) { return { id: r.uri.value, label: r.labelL.value, count: parseInt(r.cnt.value, 10) }; });
+      document.getElementById('werelderfgoedTypeFacetNote').textContent = state.werelderfgoedTypeOptions.length;
+      renderWerelderfgoedTypeFacet();
+    }).catch(function () { document.getElementById('werelderfgoedTypeList').innerHTML = '<div class="type-empty">Kon niet laden.</div>'; });
+  }
+
+  // ---------- live facet search (functie, gemeente, plaats) ----------
+
+  var facetSearchCancellers = [];
+  function wireLiveFacetSearch(inputId, kind, resultsStateKey, renderFn) {
+    var timer = null;
+    var token = 0;
+    var input = document.getElementById(inputId);
+    facetSearchCancellers.push(function () { clearTimeout(timer); });
+    input.addEventListener('input', function (e) {
+      clearTimeout(timer);
+      var term = e.target.value.trim();
+      if (term.length < 2) {
+        state[resultsStateKey] = null;
+        renderFn();
+        return;
+      }
+      timer = setTimeout(function () {
+        var myToken = ++token;
+        var query = kind === 'plaats' ? buildPlaatsFacetQuery(term) : buildFacetQuery(kind, term);
+        runQuery(query).then(function (rows) {
+          if (myToken !== token) return;
+          state[resultsStateKey] = kind === 'plaats'
+            ? rows.map(function (r) { return { id: r.label.value, label: r.label.value, count: parseInt(r.cnt.value, 10) }; })
+            : rows.map(function (r) { return { id: r.uri.value, label: r.labelL.value, count: parseInt(r.cnt.value, 10) }; });
+          renderFn();
+        });
+      }, 300);
+    });
+  }
+
+  // ---------- entity pages ----------
+
+  var entityReqToken = 0;
+  var ENTITY_DIM_LABELS = { monumentaard: 'Monumentaard', juridischeStatus: 'Juridische status', functie: 'Functie', provincie: 'Provincie', gemeente: 'Gemeente', plaats: 'Plaats', complex: 'Complex', gezichtType: 'Type', gezichtStatus: 'Status', werelderfgoedType: 'Type', werelderfgoedStatus: 'Status' };
+  var ENTITY_THEAD_HTML = {
+    rijksmonument: '<tr><th>Naam</th><th>Gemeente</th><th>Functie</th></tr>',
+    gezicht: '<tr><th>Naam</th><th>Type</th><th>Gezichtsnummer</th></tr>',
+    werelderfgoed: '<tr><th>Naam</th><th>Type</th><th>Jaar van inschrijving</th></tr>'
+  };
+  var ENTITY_RESULT_LABEL = { rijksmonument: 'monumenten', gezicht: 'gezichten', werelderfgoed: 'werelderfgoedlocaties' };
+
+  function openEntityPage(dim, id, fromHash) {
+    state.view = 'entity'; state.viewDim = dim; state.viewId = id; state.entityOffset = 0;
+    // So "Terug naar zoeken" lands back on the type this entity actually belongs to --
+    // matters for a deep link straight into a gezichtType/werelderfgoedType entity page,
+    // where browseType would otherwise still be sitting on the default 'rijksmonument'.
+    var entityType = ENTITY_DIM_TYPE[dim] || 'rijksmonument';
+    if (entityType !== state.browseType) {
+      state.browseType = entityType;
+      document.querySelectorAll('.type-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-type') === entityType); });
+      updateTypeChrome();
+      loadFacets();
+      maybeLoadResults(); // so the browse view underneath is ready by the time "Terug naar zoeken" is clicked
+    }
+    document.getElementById('layout').hidden = true;
+    document.getElementById('entityView').hidden = false;
+    if (!fromHash) location.hash = '#/entity/' + dim + '/' + encodeURIComponent(id);
+    document.getElementById('entityDim').textContent = ENTITY_DIM_LABELS[dim] || dim;
+    document.getElementById('entityName').textContent = '…';
+    document.getElementById('entityMeta').textContent = '';
+    document.getElementById('entityThead').innerHTML = ENTITY_THEAD_HTML[entityType] || ENTITY_THEAD_HTML.rijksmonument;
+    resolveEntityLabel(dim, id).then(function (label) {
+      if (state.viewDim === dim && state.viewId === id) document.getElementById('entityName').textContent = label;
+    });
+    loadEntityPage();
+  }
+  function closeEntityPage() {
+    state.view = 'browse'; state.viewDim = null; state.viewId = null;
+    document.getElementById('layout').hidden = false;
+    document.getElementById('entityView').hidden = true;
+    if (location.hash) history.replaceState('', document.title, location.pathname + location.search);
+  }
+
+  // ---------- single-record permalink page ----------
+  // A record reference is different from a facet value: it points at exactly one
+  // rijksmonument/gezicht/werelderfgoed, so this shows that one record's detail (reusing the
+  // SAME detailRowHtmlX markup already built for the inline "open row" expand) instead of a
+  // list. Unlike openEntityPage, this never needs to switch state.browseType -- the visitor
+  // stays on whichever type-tab they were browsing, and "Terug naar zoeken" returns there.
+  var recordReqToken = 0;
+  var RECORD_DETAIL_QUERY = { rijksmonument: buildDetailQuery, gezicht: buildGezichtDetailQuery, werelderfgoed: buildWerelderfgoedDetailQuery };
+  var RECORD_NORMALIZE = { rijksmonument: normalizeDetailRow, gezicht: normalizeGezichtRow, werelderfgoed: normalizeWerelderfgoedRow };
+  var RECORD_DETAIL_ROW_HTML = { rijksmonument: detailRowHtmlRijksmonument, gezicht: detailRowHtmlGezicht, werelderfgoed: detailRowHtmlWerelderfgoed };
+  var RECORD_SUBJ_FIELD = { rijksmonument: 'rm', gezicht: 'g', werelderfgoed: 'w' };
+
+  function openRecordPage(type, id, fromHash) {
+    state.view = 'record'; state.recordType = type; state.recordId = id;
+    document.getElementById('layout').hidden = true;
+    document.getElementById('entityView').hidden = true;
+    document.getElementById('recordView').hidden = false;
+    if (!fromHash) location.hash = '#/record/' + type + '/' + encodeURIComponent(id);
+    document.getElementById('recordEyebrow').textContent = RECORD_TYPE_LABEL[type] || type;
+    document.getElementById('recordName').textContent = '…';
+    document.getElementById('recordBody').innerHTML = '<tr><td class="state-msg">Bezig met laden&hellip;</td></tr>';
+
+    var token = ++recordReqToken;
+    var subjField = RECORD_SUBJ_FIELD[type];
+    runQuery(RECORD_DETAIL_QUERY[type]([id])).then(function (rows) {
+      if (token !== recordReqToken) return;
+      if (!rows.length) {
+        document.getElementById('recordName').textContent = 'Niet gevonden';
+        document.getElementById('recordBody').innerHTML = '<tr><td class="state-msg">Dit record kon niet worden gevonden.</td></tr>';
+        return;
+      }
+      var row = RECORD_NORMALIZE[type](rows[0]);
+      if (!row[subjField]) row[subjField] = { value: id };
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      document.getElementById('recordName').textContent = naam;
+      document.getElementById('recordBody').innerHTML = RECORD_DETAIL_ROW_HTML[type](row, 1);
+    }).catch(function () {
+      if (token !== recordReqToken) return;
+      document.getElementById('recordBody').innerHTML = '<tr><td class="state-msg">Fout bij ophalen record.</td></tr>';
+    });
+  }
+  function closeRecordPage() {
+    state.view = 'browse'; state.recordType = null; state.recordId = null;
+    document.getElementById('layout').hidden = false;
+    document.getElementById('recordView').hidden = true;
+    if (location.hash) history.replaceState('', document.title, location.pathname + location.search);
+  }
+
+  function renderEntityTable(rows, etype) {
+    if (etype === 'gezicht') return renderEntityTableGezicht(rows);
+    if (etype === 'werelderfgoed') return renderEntityTableWerelderfgoed(rows);
+    return renderEntityTableRijksmonument(rows);
+  }
+  // Entity-page result tables (a facet value's member list) never had a row-expand like the
+  // main browse table does, so their Naam/Gemeente/Functie/Type cells were plain text even
+  // though the same URIs are already on the row (same detail query as the main table) -- same
+  // "geen platte tekst" gap as the fields fixed in §13, just a different rendering path.
+  function renderEntityTableRijksmonument(rows) {
+    var body = document.getElementById('entityWorksBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="3" class="state-msg">Geen monumenten gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var gem = entityLinkHtml('gemeente', row.gemUriL ? row.gemUriL.value : null, row.gemL ? row.gemL.value : '—');
+      var functie = entityLinkHtml('functie', row.functieUriL ? row.functieUriL.value : null, row.functieL ? row.functieL.value : '—');
+      var rmnr = row.rmnrL ? row.rmnrL.value : null;
+      return '<tr><td class="naam-cell">' + recordLinkHtml('rijksmonument', row.rm.value, naam) + '</td><td>' + gem + '</td><td>' + functie +
+        (rmnr ? ' &middot; <a href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">register</a>' : '') +
+        '</td></tr>';
+    }).join('');
+  }
+  function renderEntityTableGezicht(rows) {
+    var body = document.getElementById('entityWorksBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="3" class="state-msg">Geen gezichten gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var type = entityLinkHtml('gezichtType', row.typeUriL ? row.typeUriL.value : null, row.typeL ? row.typeL.value : '—');
+      var nr = row.nrL ? row.nrL.value : null;
+      var url = row.urlL ? row.urlL.value : null;
+      return '<tr><td class="naam-cell">' + recordLinkHtml('gezicht', row.g.value, naam) + '</td><td>' + type + '</td><td>' + (nr ? esc(nr) : '—') +
+        (url ? ' &middot; <a href="' + esc(url) + '" target="_blank" rel="noopener">info</a>' : '') +
+        '</td></tr>';
+    }).join('');
+  }
+  function renderEntityTableWerelderfgoed(rows) {
+    var body = document.getElementById('entityWorksBody');
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="3" class="state-msg">Geen werelderfgoed gevonden.</td></tr>'; return; }
+    body.innerHTML = rows.map(function (row) {
+      var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
+      var type = entityLinkHtml('werelderfgoedType', row.typeUriL ? row.typeUriL.value : null, row.typeL ? row.typeL.value : '—');
+      var jaar = row.jaarL ? row.jaarL.value : null;
+      var url = row.urlL ? row.urlL.value : null;
+      return '<tr><td class="naam-cell">' + recordLinkHtml('werelderfgoed', row.w.value, naam) + '</td><td>' + type + '</td><td class="tabular">' + (jaar ? esc(jaar) : '—') +
+        (url ? ' &middot; <a href="' + esc(url) + '" target="_blank" rel="noopener">UNESCO</a>' : '') +
+        '</td></tr>';
+    }).join('');
+  }
+
+  function loadEntityPage() {
+    var dim = state.viewDim, id = state.viewId;
+    var etype = ENTITY_DIM_TYPE[dim] || 'rijksmonument';
+    var subjField = etype === 'gezicht' ? 'g' : etype === 'werelderfgoed' ? 'w' : 'rm';
+    var token = ++entityReqToken;
+    document.getElementById('entityWorksBody').innerHTML = '<tr><td colspan="3" class="state-msg">Bezig met laden&hellip;</td></tr>';
+
+    runQuery(buildEntityCountQuery(dim, id)).then(function (rows) {
+      if (token !== entityReqToken) return;
+      var total = rows.length ? parseInt(rows[0].cnt.value, 10) : 0;
+      document.getElementById('entityMeta').innerHTML = '<b class="tabular">' + total.toLocaleString('nl-NL') + '</b> ' + ENTITY_RESULT_LABEL[etype] + ' in de Rijksmonumentenverkenner';
+      updatePager2('entity', state.entityOffset, total);
+    });
+
+    runQuery(buildEntityIdsQuery(dim, id, state.entityOffset)).then(function (idRows) {
+      if (token !== entityReqToken) return;
+      if (!idRows.length) { renderEntityTable([], etype); return; }
+      var ids = idRows.map(function (r) { return r[subjField].value; });
+      var detailQuery = etype === 'gezicht' ? buildGezichtDetailQuery(ids) : etype === 'werelderfgoed' ? buildWerelderfgoedDetailQuery(ids) : buildDetailQuery(ids);
+      var normalize = etype === 'gezicht' ? normalizeGezichtRow : etype === 'werelderfgoed' ? normalizeWerelderfgoedRow : normalizeDetailRow;
+      return runQuery(detailQuery).then(function (detailRows) {
+        if (token !== entityReqToken) return;
+        var byId = {};
+        detailRows.forEach(function (r) { byId[r[subjField].value] = normalize(r); });
+        var ordered = ids.map(function (id2) { var fallback = {}; fallback[subjField] = { value: id2 }; return byId[id2] || fallback; });
+        renderEntityTable(ordered, etype);
+      });
+    }).catch(function () {
+      if (token !== entityReqToken) return;
+      document.getElementById('entityWorksBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+    });
+  }
+  function updatePager2(prefix, offset, total) {
+    document.getElementById(prefix + 'PrevBtn').disabled = offset === 0;
+    document.getElementById(prefix + 'NextBtn').disabled = offset + PAGE_SIZE >= total;
+    var page = Math.floor(offset / PAGE_SIZE) + 1;
+    document.getElementById(prefix + 'PageLabel').textContent = 'pagina ' + page + ' / ' + Math.max(1, Math.ceil(total / PAGE_SIZE));
+  }
+
+  // ---------- boot / wiring ----------
+
+  function showBootNotice(message) {
+    var el = document.getElementById('bootNotice');
+    el.textContent = message;
+    el.hidden = false;
+  }
+  function safeDecodeEntityId(raw) {
+    try { return decodeURIComponent(raw); } catch (e) { return null; }
+  }
+
+  loadFacets();
+  showBrowsePlaceholder();
+
+  document.getElementById('resultsBody').addEventListener('click', function (e) {
+    if (handleEntityLinkClick(e)) return;
+    if (handleRecordLinkClick(e)) return;
+    var tr = e.target.closest('tr.row');
+    if (!tr) return;
+    var id = tr.getAttribute('data-id');
+    state.openRow = state.openRow === id ? null : id;
+    renderTable(state.lastRows);
+  });
+  document.getElementById('entityWorksBody').addEventListener('click', function (e) {
+    if (handleEntityLinkClick(e)) return;
+    handleRecordLinkClick(e);
+  });
+  document.getElementById('recordBody').addEventListener('click', function (e) {
+    if (handleEntityLinkClick(e)) return;
+    handleRecordLinkClick(e);
+  });
+
+  var searchTimer = null;
+  document.getElementById('searchInput').addEventListener('input', function (e) {
+    clearTimeout(searchTimer);
+    var val = e.target.value;
+    searchTimer = setTimeout(function () {
+      state.search = val; state.offset = 0; state.openRow = null;
+      maybeLoadResults();
+    }, 450);
+  });
+
+  wireLiveFacetSearch('functieSearch', 'functie', 'functieSearchResults', renderFunctieFacet);
+  wireLiveFacetSearch('gemeenteSearch', 'gemeente', 'gemeenteSearchResults', renderGemeenteFacet);
+  wireLiveFacetSearch('plaatsSearch', 'plaats', 'plaatsSearchResults', renderPlaatsFacet);
+
+  document.querySelectorAll('.facet-toggle').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var facetId = btn.getAttribute('data-facet');
+      state.facetOpen[facetId] = !state.facetOpen[facetId];
+      applyFacetOpenState(facetId);
+    });
+  });
+
+  document.getElementById('activeChips').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-clear]');
+    if (btn) clearFilterChip(btn.getAttribute('data-clear'));
+  });
+
+  // Shared by the reset button AND the type-tab switcher -- switching type without clearing
+  // the other type's filters would leave stale state a visitor could never see or clear
+  // (its facet groups are hidden), so every type switch resets everything, not just the
+  // dimensions belonging to the newly-active type.
+  function resetAllFilters() {
+    clearTimeout(searchTimer);
+    facetSearchCancellers.forEach(function (cancel) { cancel(); });
+    state.monumentaard = null; state.juridischeStatus = null; state.functieUri = null;
+    state.provincieUri = null; state.gemeenteUri = null; state.plaats = null; state.search = '';
+    state.gezichtTypeUri = null; state.werelderfgoedTypeUri = null;
+    state.functieSearchResults = null; state.gemeenteSearchResults = null; state.plaatsSearchResults = null;
+    state.offset = 0; state.openRow = null;
+    document.getElementById('searchInput').value = '';
+    document.getElementById('functieSearch').value = '';
+    document.getElementById('gemeenteSearch').value = '';
+    document.getElementById('plaatsSearch').value = '';
+    state.facetOpen = { monumentaard: false, juridischeStatus: false, functie: false, provincie: false, gemeente: false, plaats: false, gezichtType: false, werelderfgoedType: false };
+    renderMonumentaardFacet(); renderJuridischeStatusFacet(); renderFunctieFacet();
+    renderProvincieFacet(); renderGemeenteFacet(); renderPlaatsFacet();
+    renderGezichtTypeFacet(); renderWerelderfgoedTypeFacet();
+  }
+
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    resetAllFilters();
+    maybeLoadResults();
+  });
+
+  ['prevBtnT', 'prevBtnM'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function () { state.offset = Math.max(0, state.offset - PAGE_SIZE); state.openRow = null; maybeLoadResults(); });
+  });
+  ['nextBtnT', 'nextBtnM'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function () { state.offset = state.offset + PAGE_SIZE; state.openRow = null; maybeLoadResults(); });
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      state.tab = btn.getAttribute('data-tab');
+      document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      document.getElementById('tableView').hidden = state.tab !== 'table';
+      document.getElementById('mapView').hidden = state.tab !== 'map';
+      if (state.tab === 'map') {
+        if (leafletMap) { setTimeout(function () { leafletMap.invalidateSize(); }, 0); }
+        if (hasActiveFilter()) loadMap();
+        else setMapStatus('Kies eerst een filter of zoekterm.');
+      }
+    });
+  });
+
+  var TYPE_CHROME = {
+    rijksmonument: {
+      searchLabel: 'Zoek op naam of nummer',
+      searchPlaceholder: 'bv. kerk, molen, of 20902…',
+      theadHtml: '<tr><th>Naam</th><th>Gemeente</th><th>Functie</th><th>Status</th></tr>',
+      mapHelp: 'Toont alleen de huidige pagina met resultaten (niet de hele gefilterde set) &mdash; en alleen monumenten met een officieel geregistreerd punt uit de graph <code>punten</code>. Geen zelfberekende centroïden van polygonen.',
+      mapNote: 'Toont alleen de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad), en alleen monumenten met een officieel geregistreerd punt uit de graph <code>punten</code>. Geen zelfberekende centroïden van polygonen.'
+    },
+    gezicht: {
+      searchLabel: 'Zoek op naam',
+      searchPlaceholder: 'bv. Amsterdam, Elburg…',
+      theadHtml: '<tr><th>Naam</th><th>Type</th><th>Gezichtsnummer</th></tr>',
+      mapHelp: 'Toont de contour (polygoon) van elk beschermd gezicht op de huidige pagina.',
+      mapNote: 'Toont de contour (polygoon) van elk beschermd gezicht op de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad).'
+    },
+    werelderfgoed: {
+      searchLabel: 'Zoek op naam',
+      searchPlaceholder: 'bv. Waddenzee, Kinderdijk…',
+      theadHtml: '<tr><th>Naam</th><th>Type</th><th>Jaar van inschrijving</th></tr>',
+      mapHelp: 'Toont de contour (polygoon) van elke werelderfgoedlocatie op de huidige pagina.',
+      mapNote: 'Toont de contour (polygoon) van elke werelderfgoedlocatie op de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad).'
+    },
+    complex: {
+      searchLabel: 'Zoek op naam of complexnummer',
+      searchPlaceholder: 'bv. buitenplaats, of 531016…',
+      theadHtml: '<tr><th>Naam</th><th>Complexnummer</th><th>Onderdelen</th></tr>',
+      mapHelp: '',
+      mapNote: ''
+    }
+  };
+  // Complex has no geometry of its own -- its Kaart tab is hidden rather than shown empty.
+  var TYPES_WITHOUT_MAP = { complex: true };
+  function updateTypeChrome() {
+    var meta = TYPE_CHROME[state.browseType];
+    document.getElementById('searchLabel').textContent = meta.searchLabel;
+    document.getElementById('searchInput').placeholder = meta.searchPlaceholder;
+    document.getElementById('resultsThead').innerHTML = meta.theadHtml;
+    document.getElementById('mapHelpText').innerHTML = meta.mapHelp;
+    document.getElementById('mapNote').innerHTML = meta.mapNote;
+    document.querySelectorAll('[data-type-group]').forEach(function (el) {
+      el.hidden = el.getAttribute('data-type-group') !== state.browseType;
+    });
+    var mapTabBtn = document.querySelector('.tab-btn[data-tab="map"]');
+    var mapUnavailable = !!TYPES_WITHOUT_MAP[state.browseType];
+    mapTabBtn.hidden = mapUnavailable;
+    if (mapUnavailable && state.tab === 'map') {
+      state.tab = 'table';
+      document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === 'table'); });
+      document.getElementById('tableView').hidden = false;
+      document.getElementById('mapView').hidden = true;
+    }
+  }
+
+  document.querySelectorAll('.type-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (btn.classList.contains('active')) return;
+      state.browseType = btn.getAttribute('data-type');
+      document.querySelectorAll('.type-tab').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      updateTypeChrome();
+      resetAllFilters();
+      loadFacets();
+      maybeLoadResults();
+      if (state.tab === 'map' && leafletMap) setTimeout(function () { leafletMap.invalidateSize(); }, 0);
+    });
+  });
+
+  document.getElementById('entityBackBtn').addEventListener('click', closeEntityPage);
+  document.getElementById('entityPrevBtn').addEventListener('click', function () { state.entityOffset = Math.max(0, state.entityOffset - PAGE_SIZE); loadEntityPage(); });
+  document.getElementById('entityNextBtn').addEventListener('click', function () { state.entityOffset = state.entityOffset + PAGE_SIZE; loadEntityPage(); });
+  document.getElementById('recordBackBtn').addEventListener('click', closeRecordPage);
+
+  var ENTITY_HASH_RE = /^#\/entity\/(monumentaard|juridischeStatus|functie|provincie|gemeente|plaats|complex|gezichtType|gezichtStatus|werelderfgoedType|werelderfgoedStatus)\/(.+)$/;
+  var RECORD_HASH_RE = /^#\/record\/(rijksmonument|gezicht|werelderfgoed)\/(.+)$/;
+  function handleHashRoute(fromBoot) {
+    var em = ENTITY_HASH_RE.exec(location.hash);
+    if (em) {
+      var entityId = safeDecodeEntityId(em[2]);
+      if (entityId === null) {
+        if (location.hash) history.replaceState('', document.title, location.pathname + location.search);
+        showBootNotice('Deze link kon niet worden geopend (ongeldige waarde) — je ziet nu het gewone zoekscherm.');
+        if (state.view === 'entity') closeEntityPage();
+        return;
+      }
+      openEntityPage(em[1], entityId, true);
+      return;
+    }
+    var rm = RECORD_HASH_RE.exec(location.hash);
+    if (rm) {
+      var recordId = safeDecodeEntityId(rm[2]);
+      if (recordId === null) {
+        if (location.hash) history.replaceState('', document.title, location.pathname + location.search);
+        showBootNotice('Deze link kon niet worden geopend (ongeldige waarde) — je ziet nu het gewone zoekscherm.');
+        if (state.view === 'record') closeRecordPage();
+        return;
+      }
+      openRecordPage(rm[1], recordId, true);
+      return;
+    }
+    if (!fromBoot) {
+      if (state.view === 'entity') closeEntityPage();
+      else if (state.view === 'record') closeRecordPage();
+    }
+  }
+  window.addEventListener('hashchange', function () { handleHashRoute(false); });
+  if (location.hash) handleHashRoute(true);
+
+})();
+</script>
+</body>
+</html>

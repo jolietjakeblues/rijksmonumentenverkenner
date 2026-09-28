@@ -190,6 +190,29 @@
   .omschrijving h4 { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
   .omschrijving p { font-size: 12.5px; line-height: 1.6; white-space: pre-line; margin: 0; }
 
+  .ld-section { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border); max-width: 900px; }
+  .ld-uri { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 11.5px; margin-bottom: 8px; }
+  .ld-uri-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 4px; }
+  .ld-uri code { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+  .ld-copy { background: none; border: none; padding: 2px 3px; cursor: pointer; color: var(--muted); font-size: 11px; line-height: 1; vertical-align: middle; }
+  .ld-copy:hover, .ld-copy.done { color: var(--gold); }
+  .ld-ext { color: var(--muted); text-decoration: none; font-size: 12px; padding: 0 2px; }
+  .ld-ext:hover { color: var(--gold); }
+  .ld-panel > summary { cursor: pointer; font-family: var(--font-mono); font-size: 11.5px; color: var(--gold); }
+  .ld-panel.ld-nested { display: inline; }
+  .ld-panel.ld-nested > summary { display: inline; font-family: var(--font-body); font-size: 12px; color: var(--ink); text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+  .ld-panel.ld-nested > summary:hover { color: var(--gold); }
+  .ld-panel.ld-nested[open] > .ld-body { display: block; margin: 6px 0 4px; padding: 4px 0 4px 12px; border-left: 2px solid var(--gold-soft); }
+  .ld-body { margin-top: 8px; }
+  .ld-meta { font-size: 11.5px; color: var(--muted); margin: 0 0 6px; }
+  .ld-h { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 4px; }
+  table.ld-table { font-size: 12px; width: 100%; }
+  tr.detail-row .ld-table td, .ld-table td { background: transparent; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--grey-soft); vertical-align: top; }
+  .ld-table td.ld-p { width: 32%; min-width: 120px; color: var(--muted); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+  .ld-lit { white-space: pre-line; overflow-wrap: anywhere; }
+  .ld-dt { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+  #entityLd .ld-section { margin-top: 10px; }
+
   .pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 12px; }
   .pager button { font: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 6px 12px; cursor: pointer; color: var(--ink); }
   .pager button:disabled { opacity: 0.35; cursor: default; }
@@ -226,6 +249,7 @@
   </p>
 
   <div class="boot-notice" id="bootNotice" hidden></div>
+  <div class="boot-notice" id="queryNotice" role="status" hidden></div>
 
   <div class="help-bar">
     <div class="help-tip"><span class="help-label">Doorklikken</span>Facetwaarden in de resultaten zijn klikbaar &mdash; dat opent een eigen pagina met alles binnen die waarde.</div>
@@ -395,6 +419,7 @@
       <span class="eyebrow" id="entityDim"></span>
       <h2 id="entityName"></h2>
       <p class="entity-meta" id="entityMeta"></p>
+      <div id="entityLd"></div>
     </div>
     <div class="table-scroll">
       <table>
@@ -490,15 +515,46 @@
   }
   function sparqlEsc(s) { return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
 
+  // Two ways an endpoint can fail to give a full answer, both made visible instead of passing
+  // for an ordinary error or a complete result (idea taken from kvistgaard/opsis):
+  // - a time-out. The RCE endpoint (TriplyDB) stops a query after about a minute and answers
+  //   HTTP 504 {"message":"Query has timed out."} (live-verified 2026-09-28 with a
+  //   store-wide GROUP BY). The error carries .timeout so callers can say so, and suggest
+  //   narrowing the filter, instead of a bare "Fout bij ophalen".
+  // - a partial answer. Virtuoso-style endpoints can answer HTTP 206 with the rows they had
+  //   when the limit hit. RCE doesn't do this today, but if it ever does those rows are kept
+  //   and a notice says counts may be incomplete, rather than showing them as the whole set.
   function runQuery(query) {
     var url = ENDPOINT + '?query=' + encodeURIComponent(query);
     return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) {
+          return r.text().then(function (body) {
+            var err = new Error('HTTP ' + r.status);
+            err.status = r.status;
+            err.timeout = r.status === 504 || r.status === 408 || /timed?\s*-?out/i.test(body);
+            throw err;
+          });
+        }
+        if (r.status === 206) showPartialNotice();
         return r.json();
       })
       .then(function (json) { return json.results.bindings; });
   }
+
+  function errorText(err, fallback) {
+    if (err && err.timeout) return 'De RCE-server brak deze zoekopdracht af na ongeveer een minuut (time-out). Maak het filter specifieker en probeer het opnieuw.';
+    return fallback;
+  }
+
+  // Cleared at the start of every new load (results, entity page, record page), so it only
+  // ever describes what is on screen now.
+  function showPartialNotice() {
+    var el = document.getElementById('queryNotice');
+    el.textContent = 'Let op: de server heeft een of meer antwoorden afgekapt op zijn tijdslimiet. Aantallen en lijsten kunnen onvolledig zijn.';
+    el.hidden = false;
+  }
+  function clearPartialNotice() { document.getElementById('queryNotice').hidden = true; }
 
   // ---------- SAMPLE() correlation-safety helper (same trick as the Rijkscollectie
   // project): independent OPTIONAL blocks aggregated with separate SAMPLE() calls are NOT
@@ -1468,6 +1524,169 @@
     return true;
   }
 
+  // ---------- linked-data panel: every triple about a resource, and what links to it ----------
+  // Idea taken from kvistgaard/opsis' entity pane: besides the curated detail fields, show the
+  // resource's source URI and, on request, all its outgoing triples plus the resources that
+  // point at it. Loaded lazily when the <details> opens, so closed rows cost no queries. Any
+  // URI value in the panel is itself a collapsible panel, so e.g. an unlabeled
+  // functie/131233 node can be opened in place to see what it actually says.
+  //
+  // Query shape: the subject/object pairs are picked (and LIMITed) in a subselect first and
+  // only then labelled. Grouping-and-ordering everything before the LIMIT took 7.4 s on the
+  // "rijksmonument" status concept (63,102 incoming links); the subselect form took 0.8 s
+  // (live-measured 2026-09-28).
+  var LD_OUT_CAP = 300;
+  var LD_IN_CAP = 200;
+  var LD_MAX_DEPTH = 4;
+  var LD_PREFIXES = 'PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\nPREFIX skos: <http://www.w3.org/2004/02/skos/core#>\n';
+  var LD_SHORT = [
+    ['https://linkeddata.cultureelerfgoed.nl/def/ceo#', 'ceo:'],
+    ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf:'],
+    ['http://www.w3.org/2000/01/rdf-schema#', 'rdfs:'],
+    ['http://www.w3.org/2004/02/skos/core#', 'skos:'],
+    ['http://www.w3.org/2002/07/owl#', 'owl:'],
+    ['http://www.opengis.net/ont/geosparql#', 'geo:'],
+    ['http://purl.org/dc/terms/', 'dct:'],
+    ['https://schema.org/', 'schema:'],
+    ['http://schema.org/', 'schema:']
+  ];
+  // A URI goes between angle brackets in a query, and it comes from the data, so anything
+  // that could close the IRI is refused rather than sent.
+  function iriSafe(s) { return typeof s === 'string' && /^https?:\/\/[^\s<>"{}|^`\\]+$/i.test(s); }
+  function shortIri(u) {
+    for (var i = 0; i < LD_SHORT.length; i++) if (u.indexOf(LD_SHORT[i][0]) === 0) return LD_SHORT[i][1] + u.slice(LD_SHORT[i][0].length);
+    return u;
+  }
+  function iriLocalName(u) {
+    var cut = Math.max(u.lastIndexOf('#'), u.lastIndexOf('/'));
+    return (cut >= 0 ? u.slice(cut + 1) : u) || u;
+  }
+  // Dutch label first, then any label (CEO labels some properties only in English).
+  function ldLabel(row, key) {
+    return row[key + 'Nl'] ? row[key + 'Nl'].value : row[key + 'Any'] ? row[key + 'Any'].value : null;
+  }
+  function labelOptionals(v, name) {
+    return '  OPTIONAL { ' + v + ' rdfs:label|skos:prefLabel ?' + name + 'N . FILTER(langMatches(lang(?' + name + 'N), "nl")) }\n' +
+           '  OPTIONAL { ' + v + ' rdfs:label|skos:prefLabel ?' + name + 'A }\n';
+  }
+  function buildLdOutQuery(iri) {
+    return LD_PREFIXES +
+      'SELECT ?p ?o (SAMPLE(?plN) AS ?plNl) (SAMPLE(?plA) AS ?plAny) (SAMPLE(?olN) AS ?olNl) (SAMPLE(?olA) AS ?olAny) WHERE {\n' +
+      '  { SELECT DISTINCT ?p ?o WHERE { <' + iri + '> ?p ?o } LIMIT ' + (LD_OUT_CAP + 1) + ' }\n' +
+      labelOptionals('?p', 'pl') + labelOptionals('?o', 'ol') +
+      '} GROUP BY ?p ?o ORDER BY ?p ?o';
+  }
+  function buildLdInQuery(iri) {
+    return LD_PREFIXES +
+      'SELECT ?s ?p (SAMPLE(?plN) AS ?plNl) (SAMPLE(?plA) AS ?plAny) (SAMPLE(?slN) AS ?slNl) (SAMPLE(?slA) AS ?slAny) WHERE {\n' +
+      '  { SELECT DISTINCT ?s ?p WHERE { ?s ?p <' + iri + '> } LIMIT ' + (LD_IN_CAP + 1) + ' }\n' +
+      labelOptionals('?p', 'pl') + labelOptionals('?s', 'sl') +
+      '} GROUP BY ?s ?p ORDER BY ?p ?s';
+  }
+
+  var COPY_ICON = '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M10.5 3.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h.5"/></svg>';
+  function copyButtonHtml(text) {
+    return '<button type="button" class="ld-copy" data-copy="' + esc(text) + '" title="Kopieer ' + esc(text) + '" aria-label="URI kopiëren">' + COPY_ICON + '</button>';
+  }
+  function extLinkHtml(iri) {
+    return '<a class="ld-ext" href="' + esc(iri) + '" target="_blank" rel="noopener" title="Open ' + esc(iri) + ' in een nieuw tabblad">&#8599;</a>';
+  }
+  // The clipboard API needs a secure context; where it refuses, the older selection copy works.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    var area = document.createElement('textarea');
+    area.value = text; document.body.appendChild(area); area.select();
+    try { document.execCommand('copy'); } finally { area.remove(); }
+    return Promise.resolve();
+  }
+
+  // A URI value inside the panel: collapsible in place (up to LD_MAX_DEPTH levels), plus copy
+  // and open-in-new-tab. Beyond the depth limit it is a plain external link.
+  function ldValueHtml(iri, label, depth) {
+    var text = label || shortIri(iri);
+    if (!iriSafe(iri)) return esc(text);
+    if (depth >= LD_MAX_DEPTH) return '<a href="' + esc(iri) + '" target="_blank" rel="noopener" title="' + esc(iri) + '">' + esc(text) + '</a>';
+    return '<details class="ld-panel ld-nested" data-uri="' + esc(iri) + '" data-depth="' + (depth + 1) + '">' +
+      '<summary title="' + esc(iri) + '">' + esc(text) + '</summary>' + copyButtonHtml(iri) + extLinkHtml(iri) +
+      '<div class="ld-body"></div></details>';
+  }
+
+  // The block appended to every detail view: source URI always visible, full data on request.
+  function ldSectionHtml(iri) {
+    if (!iriSafe(iri)) return '';
+    return '<div class="ld-section">' +
+      '<div class="ld-uri"><span class="ld-uri-label">Bron-URI</span><code>' + esc(iri) + '</code>' + copyButtonHtml(iri) + extLinkHtml(iri) + '</div>' +
+      '<details class="ld-panel ld-root" data-uri="' + esc(iri) + '" data-depth="0">' +
+      '<summary>Alle gegevens als linked data</summary><div class="ld-body"></div></details>' +
+      '</div>';
+  }
+
+  function ldLiteralHtml(o) {
+    var extra = o['xml:lang'] ? '@' + o['xml:lang'] : o.datatype ? shortIri(o.datatype).replace(/^http:\/\/www\.w3\.org\/2001\/XMLSchema#/, 'xsd:') : '';
+    return '<span class="ld-lit">' + esc(o.value) + '</span>' + (extra ? ' <span class="ld-dt">' + esc(extra) + '</span>' : '');
+  }
+
+  function renderLdBody(body, outRows, inRows, depth) {
+    var out = outRows.slice(0, LD_OUT_CAP);
+    var inc = inRows.slice(0, LD_IN_CAP);
+    var propCell = function (r) {
+      return '<td class="ld-p" title="' + esc(r.p.value) + '">' + esc(ldLabel(r, 'pl') || iriLocalName(r.p.value)) + '</td>';
+    };
+    var html = '<p class="ld-meta">' + (outRows.length > LD_OUT_CAP ? 'de eerste ' + LD_OUT_CAP : out.length) + ' gegevens' +
+      (inc.length ? '; verwezen vanuit ' + (inRows.length > LD_IN_CAP ? 'meer dan ' + LD_IN_CAP : inc.length) + ' plek(ken)' : '') +
+      (outRows.length > LD_OUT_CAP || inRows.length > LD_IN_CAP ? '; de rest wordt niet getoond' : '') + '</p>';
+    if (out.length) {
+      html += '<table class="ld-table"><tbody>' + out.map(function (r) {
+        var o = r.o;
+        var val = o.type === 'uri' ? ldValueHtml(o.value, ldLabel(r, 'ol'), depth)
+          : o.type === 'bnode' ? '<span class="no-val">[anonieme knoop]</span>'
+          : ldLiteralHtml(o);
+        return '<tr>' + propCell(r) + '<td>' + val + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    } else {
+      html += '<p class="no-val">Geen gegevens over deze URI in de RCE-dataset.</p>';
+    }
+    if (inc.length) {
+      html += '<h5 class="ld-h">Verwezen vanuit</h5><table class="ld-table"><tbody>' + inc.map(function (r) {
+        var s = r.s.type === 'uri' ? ldValueHtml(r.s.value, ldLabel(r, 'sl'), depth) : '<span class="no-val">[anonieme knoop]</span>';
+        return '<tr>' + propCell(r) + '<td>' + s + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    }
+    body.innerHTML = html;
+  }
+
+  function loadLdPanel(panel) {
+    if (panel.getAttribute('data-loaded')) return;
+    panel.setAttribute('data-loaded', '1');
+    var iri = panel.getAttribute('data-uri');
+    var depth = parseInt(panel.getAttribute('data-depth'), 10) || 0;
+    var body = panel.querySelector(':scope > .ld-body');
+    body.innerHTML = '<p class="ld-meta">Bezig met laden&hellip;</p>';
+    Promise.all([runQuery(buildLdOutQuery(iri)), runQuery(buildLdInQuery(iri))]).then(function (res) {
+      if (!body.isConnected) return;
+      renderLdBody(body, res[0], res[1], depth);
+    }).catch(function (err) {
+      panel.removeAttribute('data-loaded'); // closing and reopening tries again
+      if (!body.isConnected) return;
+      body.innerHTML = '<p class="no-val">' + esc(errorText(err, 'Kon de linked data niet ophalen.')) + '</p>';
+    });
+  }
+
+  // 'toggle' doesn't bubble, so it's caught in the capture phase for every panel on the page.
+  document.addEventListener('toggle', function (e) {
+    var panel = e.target;
+    if (panel.classList && panel.classList.contains('ld-panel') && panel.open) loadLdPanel(panel);
+  }, true);
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.ld-copy');
+    if (!btn) return;
+    e.stopPropagation();
+    copyText(btn.getAttribute('data-copy')).then(function () {
+      btn.classList.add('done'); btn.textContent = '✓';
+      setTimeout(function () { btn.classList.remove('done'); btn.innerHTML = COPY_ICON; }, 1200);
+    });
+  }, true);
+
   function detailFieldsHtmlRijksmonument(row) {
     var adres = row.adresL ? row.adresL.value : null;
     var woonplaats = row.woonplaatsL ? row.woonplaatsL.value : null;
@@ -1508,6 +1727,7 @@
       detailFieldsHtmlRijksmonument(row) +
       omschrijvingHtml(row) +
       (rmnr ? '<a class="register-link" href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">Bekijk in het Monumentenregister &rarr;</a>' : '') +
+      ldSectionHtml(row.rm && row.rm.value) +
       '</td></tr>';
   }
 
@@ -1528,6 +1748,7 @@
       '<p class="detail-sub">' + (nr ? 'Gezichtsnummer ' + esc(nr) : 'Geen gezichtsnummer bekend') + '</p>' +
       detailFieldsHtmlGezicht(row) +
       (url ? '<a class="register-link" href="' + esc(url) + '" target="_blank" rel="noopener">Meer info op kennis.cultureelerfgoed.nl &rarr;</a>' : '') +
+      ldSectionHtml(row.g && row.g.value) +
       '</td></tr>';
   }
 
@@ -1548,6 +1769,7 @@
       '<p class="detail-sub">' + (nr ? 'Werelderfgoednummer ' + esc(nr) : 'Geen werelderfgoednummer bekend') + '</p>' +
       detailFieldsHtmlWerelderfgoed(row) +
       (url ? '<a class="register-link" href="' + esc(url) + '" target="_blank" rel="noopener">Bekijk op de UNESCO-website &rarr;</a>' : '') +
+      ldSectionHtml(row.w && row.w.value) +
       '</td></tr>';
   }
 
@@ -1570,6 +1792,7 @@
       '<p class="detail-sub">' + (nr ? 'Complexnummer ' + esc(nr) : 'Geen complexnummer bekend') + '</p>' +
       detailFieldsHtmlComplex(row) +
       omschrijvingHtml(row) +
+      ldSectionHtml(row.co && row.co.value) +
       '</td></tr>';
   }
 
@@ -1699,6 +1922,7 @@
   }
 
   function loadResults() {
+    clearPartialNotice();
     if (state.browseType === 'gezicht') return loadResultsGezicht();
     if (state.browseType === 'werelderfgoed') return loadResultsWerelderfgoed();
     if (state.browseType === 'complex') return loadResultsComplex();
@@ -1721,9 +1945,9 @@
       renderResultCount(lastCount);
       updatePager('T', state.offset, lastCount, lastCount);
       updatePager('M', state.offset, lastCount, lastCount);
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+      document.getElementById('resultCount').textContent = err && err.timeout ? 'Aantal niet beschikbaar (time-out).' : 'Fout bij ophalen aantal.';
     });
 
     runQuery(buildIdsQuery()).then(function (idRows) {
@@ -1739,9 +1963,9 @@
         renderTable(ordered);
         if (state.tab === 'map') loadMap();
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="4" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="4" class="state-msg">' + esc(errorText(err, 'Fout bij ophalen resultaten.')) + '</td></tr>';
     });
   }
 
@@ -1756,9 +1980,9 @@
       renderResultCount(lastCount);
       updatePager('T', state.offset, lastCount, lastCount);
       updatePager('M', state.offset, lastCount, lastCount);
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+      document.getElementById('resultCount').textContent = err && err.timeout ? 'Aantal niet beschikbaar (time-out).' : 'Fout bij ophalen aantal.';
     });
 
     runQuery(buildGezichtIdsQuery()).then(function (idRows) {
@@ -1774,9 +1998,9 @@
         renderTable(ordered);
         if (state.tab === 'map') loadMap();
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">' + esc(errorText(err, 'Fout bij ophalen resultaten.')) + '</td></tr>';
     });
   }
 
@@ -1791,9 +2015,9 @@
       renderResultCount(lastCount);
       updatePager('T', state.offset, lastCount, lastCount);
       updatePager('M', state.offset, lastCount, lastCount);
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+      document.getElementById('resultCount').textContent = err && err.timeout ? 'Aantal niet beschikbaar (time-out).' : 'Fout bij ophalen aantal.';
     });
 
     runQuery(buildWerelderfgoedIdsQuery()).then(function (idRows) {
@@ -1809,9 +2033,9 @@
         renderTable(ordered);
         if (state.tab === 'map') loadMap();
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">' + esc(errorText(err, 'Fout bij ophalen resultaten.')) + '</td></tr>';
     });
   }
 
@@ -1827,9 +2051,9 @@
       renderResultCount(lastCount);
       updatePager('T', state.offset, lastCount, lastCount);
       updatePager('M', state.offset, lastCount, lastCount);
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultCount').textContent = 'Fout bij ophalen aantal.';
+      document.getElementById('resultCount').textContent = err && err.timeout ? 'Aantal niet beschikbaar (time-out).' : 'Fout bij ophalen aantal.';
     });
 
     runQuery(buildComplexIdsQuery()).then(function (idRows) {
@@ -1844,9 +2068,9 @@
         state.lastRows = ordered;
         renderTable(ordered);
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== reqToken) return;
-      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+      document.getElementById('resultsBody').innerHTML = '<tr><td colspan="3" class="state-msg">' + esc(errorText(err, 'Fout bij ophalen resultaten.')) + '</td></tr>';
     });
   }
 
@@ -1933,6 +2157,10 @@
             ? rows.map(function (r) { return { id: r.label.value, label: r.label.value, count: parseInt(r.cnt.value, 10) }; })
             : rows.map(function (r) { return { id: r.uri.value, label: r.labelL.value, count: parseInt(r.cnt.value, 10) }; });
           renderFn();
+        }).catch(function (err) {
+          if (myToken !== token) return;
+          var list = document.getElementById(kind + 'List');
+          if (list) list.innerHTML = '<div class="type-empty">' + esc(err && err.timeout ? 'Zoeken duurde te lang (time-out). Typ een specifiekere term.' : 'Kon niet zoeken.') + '</div>';
         });
       }, 300);
     });
@@ -1968,6 +2196,9 @@
     document.getElementById('entityDim').textContent = ENTITY_DIM_LABELS[dim] || dim;
     document.getElementById('entityName').textContent = '…';
     document.getElementById('entityMeta').textContent = '';
+    // Facet values are concepts/records with their own URI (plaats is a plain literal, so it
+    // gets none): show it, and its full linked data, same as a record's detail view.
+    document.getElementById('entityLd').innerHTML = ldSectionHtml(id);
     document.getElementById('entityThead').innerHTML = ENTITY_THEAD_HTML[entityType] || ENTITY_THEAD_HTML.rijksmonument;
     resolveEntityLabel(dim, id).then(function (label) {
       if (state.viewDim === dim && state.viewId === id) document.getElementById('entityName').textContent = label;
@@ -2004,6 +2235,7 @@
     document.getElementById('recordBody').innerHTML = '<tr><td class="state-msg">Bezig met laden&hellip;</td></tr>';
 
     var token = ++recordReqToken;
+    clearPartialNotice();
     var subjField = RECORD_SUBJ_FIELD[type];
     runQuery(RECORD_DETAIL_QUERY[type]([id])).then(function (rows) {
       if (token !== recordReqToken) return;
@@ -2017,9 +2249,9 @@
       var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
       document.getElementById('recordName').textContent = naam;
       document.getElementById('recordBody').innerHTML = RECORD_DETAIL_ROW_HTML[type](row, 1);
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== recordReqToken) return;
-      document.getElementById('recordBody').innerHTML = '<tr><td class="state-msg">Fout bij ophalen record.</td></tr>';
+      document.getElementById('recordBody').innerHTML = '<tr><td class="state-msg">' + esc(errorText(err, 'Fout bij ophalen record.')) + '</td></tr>';
     });
   }
   function closeRecordPage() {
@@ -2085,6 +2317,7 @@
     var etype = ENTITY_DIM_TYPE[dim] || 'rijksmonument';
     var subjField = etype === 'gezicht' ? 'g' : etype === 'werelderfgoed' ? 'w' : 'rm';
     var token = ++entityReqToken;
+    clearPartialNotice();
     document.getElementById('entityWorksBody').innerHTML = '<tr><td colspan="3" class="state-msg">Bezig met laden&hellip;</td></tr>';
 
     runQuery(buildEntityCountQuery(dim, id)).then(function (rows) {
@@ -2107,9 +2340,9 @@
         var ordered = ids.map(function (id2) { var fallback = {}; fallback[subjField] = { value: id2 }; return byId[id2] || fallback; });
         renderEntityTable(ordered, etype);
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== entityReqToken) return;
-      document.getElementById('entityWorksBody').innerHTML = '<tr><td colspan="3" class="state-msg">Fout bij ophalen resultaten.</td></tr>';
+      document.getElementById('entityWorksBody').innerHTML = '<tr><td colspan="3" class="state-msg">' + esc(errorText(err, 'Fout bij ophalen resultaten.')) + '</td></tr>';
     });
   }
   function updatePager2(prefix, offset, total) {

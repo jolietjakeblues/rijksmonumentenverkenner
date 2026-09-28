@@ -29,6 +29,10 @@ Start `wrangler dev`. Werkt meteen tegen live data — geen secrets, geen `.dev.
 
 ## Deployen
 
+Automatisch: de Worker `rijksmonumentenverkenner` is in Cloudflare (Workers Builds) gekoppeld aan deze repo. Elke merge naar `main` bouwt en deployt vanzelf; de voortgang staat in het Cloudflare-dashboard onder de Worker, tab **Deployments**. Instellingen daar: **Build command** leeg (er is niets te bouwen, de app is statisch), **Deploy command** `npx wrangler deploy`, **Root directory** `/`.
+
+Handmatig, vanaf een eigen machine met `npx wrangler login`:
+
 ```bash
 npm run deploy
 ```

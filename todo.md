@@ -6,7 +6,14 @@ Punten uit de externe review op de live site (zie [analyse.md §14](analyse.md))
 
 ---
 
-## 1. Deelbare, reproduceerbare zoek-URL
+## 1. ✅ Deelbare, reproduceerbare zoek-URL (2026-09-28)
+
+**Geïmplementeerd** (idee van [kvistgaard/opsis](https://github.com/kvistgaard/opsis)' `syncUrl`): route `#/zoek/<type>?q=…&monumentaard=…&status=…&functie=…&provincie=…&gemeente=…&plaats=…&type=…&pagina=N&weergave=kaart`. Elke wijziging (type, zoekterm, filter, pagina, tabel/kaart) wordt met `history.replaceState` in de URL geschreven, dus geen extra stap in de terugknop per klik; een facet- of recordpagina openen pusht nog wel, zodat Terug naar de zoekopdracht terugkeert. Een kale eerste bezoek houdt een schone URL. Waarden uit een link worden gecontroleerd (URI's alleen als geldige http(s)-IRI, pagina als getal, kaart alleen bij types met kaart); ongeldige waarden vallen weg. Labels van functie/gemeente/gezichts-/werelderfgoedtype worden los opgehaald, zodat de chip de echte naam toont. Uitgeklapte rij zit er bewust niet in.
+
+Tegelijk: queries gaan nu als form-POST naar de proxy en van daar naar RCE (geen URL-lengtegrens, geen CORS-preflight); de proxy accepteert GET `?query=` nog steeds. De proxylimiet van 4000 tekens is ongewijzigd.
+
+Oorspronkelijke notitie:
+
 
 **Doel:** een samengestelde zoekopdracht (zoekterm + actieve filters + type + pagina) delen als link, net zoals een facetwaarde (`#/entity/...`) of los record (`#/record/...`) dat al kunnen.
 

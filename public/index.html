@@ -523,6 +523,7 @@
     recordType: null,     // 'rijksmonument' | 'gezicht' | 'werelderfgoed', when view === 'record'
     recordId: null,
     entityOffset: 0,
+    filterLabels: {},     // labels for filters restored from a #/zoek link, before their option lists know them
     facetOpen: { monumentaard: false, juridischeStatus: false, functie: false, provincie: false, gemeente: false, plaats: false, gezichtType: false, werelderfgoedType: false }
   };
 
@@ -542,9 +543,14 @@
   // - a partial answer. Virtuoso-style endpoints can answer HTTP 206 with the rows they had
   //   when the limit hit. RCE doesn't do this today, but if it ever does those rows are kept
   //   and a notice says counts may be incomplete, rather than showing them as the whole set.
+  // Sent as a form POST (the SPARQL protocol's most widely accepted form, as kvistgaard/opsis
+  // does): no URL-length ceiling for long VALUES blocks, and a form post needs no CORS preflight.
   function runQuery(query) {
-    var url = ENDPOINT + '?query=' + encodeURIComponent(query);
-    return fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } })
+    return fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Accept': 'application/sparql-results+json' },
+      body: new URLSearchParams({ query: query })
+    })
       .then(function (r) {
         if (!r.ok) {
           return r.text().then(function (body) {
@@ -1492,18 +1498,18 @@
       if (state.juridischeStatus) { var j = state.juridischeStatusOptions.filter(function (o) { return o.id === state.juridischeStatus; })[0]; if (j) chips.push({ key: 'juridischeStatus', label: j.label }); }
       if (state.functieUri) {
         var f = (state.functieSearchResults || state.functieOptions).filter(function (o) { return o.id === state.functieUri; })[0];
-        chips.push({ key: 'functie', label: f ? f.label : 'functie' });
+        chips.push({ key: 'functie', label: f ? f.label : (state.filterLabels.functie || 'functie') });
       }
       if (state.provincieUri) { var p = state.provincieOptions.filter(function (o) { return o.id === state.provincieUri; })[0]; if (p) chips.push({ key: 'provincie', label: p.label }); }
       if (state.gemeenteUri) {
         var g = (state.gemeenteSearchResults || state.gemeenteOptions).filter(function (o) { return o.id === state.gemeenteUri; })[0];
-        chips.push({ key: 'gemeente', label: g ? g.label : 'gemeente' });
+        chips.push({ key: 'gemeente', label: g ? g.label : (state.filterLabels.gemeente || 'gemeente') });
       }
       if (state.plaats) chips.push({ key: 'plaats', label: state.plaats });
     } else if (state.browseType === 'gezicht') {
-      if (state.gezichtTypeUri) { var gt = state.gezichtTypeOptions.filter(function (o) { return o.id === state.gezichtTypeUri; })[0]; if (gt) chips.push({ key: 'gezichtType', label: gt.label }); }
+      if (state.gezichtTypeUri) { var gt = state.gezichtTypeOptions.filter(function (o) { return o.id === state.gezichtTypeUri; })[0]; chips.push({ key: 'gezichtType', label: gt ? gt.label : (state.filterLabels.gezichtType || 'type') }); }
     } else if (state.browseType === 'werelderfgoed') {
-      if (state.werelderfgoedTypeUri) { var wt = state.werelderfgoedTypeOptions.filter(function (o) { return o.id === state.werelderfgoedTypeUri; })[0]; if (wt) chips.push({ key: 'werelderfgoedType', label: wt.label }); }
+      if (state.werelderfgoedTypeUri) { var wt = state.werelderfgoedTypeOptions.filter(function (o) { return o.id === state.werelderfgoedTypeUri; })[0]; chips.push({ key: 'werelderfgoedType', label: wt ? wt.label : (state.filterLabels.werelderfgoedType || 'type') }); }
     }
     if (state.search) chips.push({ key: 'search', label: '"' + state.search + '"' });
 
@@ -1935,6 +1941,7 @@
   }
 
   function maybeLoadResults() {
+    syncBrowseUrl();
     if (hasActiveFilter()) loadResults();
     else showBrowsePlaceholder();
   }
@@ -2227,7 +2234,7 @@
     state.view = 'browse'; state.viewDim = null; state.viewId = null;
     document.getElementById('layout').hidden = false;
     document.getElementById('entityView').hidden = true;
-    if (location.hash) history.replaceState('', document.title, location.pathname + location.search);
+    history.replaceState(null, '', location.pathname + location.search + browseHash());
   }
 
   // ---------- single-record permalink page ----------
@@ -2276,7 +2283,7 @@
     state.view = 'browse'; state.recordType = null; state.recordId = null;
     document.getElementById('layout').hidden = false;
     document.getElementById('recordView').hidden = true;
-    if (location.hash) history.replaceState('', document.title, location.pathname + location.search);
+    history.replaceState(null, '', location.pathname + location.search + browseHash());
   }
 
   function renderEntityTable(rows, etype) {
@@ -2440,7 +2447,7 @@
     state.provincieUri = null; state.gemeenteUri = null; state.plaats = null; state.search = '';
     state.gezichtTypeUri = null; state.werelderfgoedTypeUri = null;
     state.functieSearchResults = null; state.gemeenteSearchResults = null; state.plaatsSearchResults = null;
-    state.offset = 0; state.openRow = null;
+    state.offset = 0; state.openRow = null; state.filterLabels = {};
     document.getElementById('searchInput').value = '';
     document.getElementById('functieSearch').value = '';
     document.getElementById('gemeenteSearch').value = '';
@@ -2463,12 +2470,16 @@
     document.getElementById(id).addEventListener('click', function () { state.offset = state.offset + PAGE_SIZE; state.openRow = null; maybeLoadResults(); });
   });
 
+  function setTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
+    document.getElementById('tableView').hidden = state.tab !== 'table';
+    document.getElementById('mapView').hidden = state.tab !== 'map';
+    syncBrowseUrl();
+  }
   document.querySelectorAll('.tab-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      state.tab = btn.getAttribute('data-tab');
-      document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b === btn); });
-      document.getElementById('tableView').hidden = state.tab !== 'table';
-      document.getElementById('mapView').hidden = state.tab !== 'map';
+      setTab(btn.getAttribute('data-tab'));
       if (state.tab === 'map') {
         if (leafletMap) { setTimeout(function () { leafletMap.invalidateSize(); }, 0); }
         if (hasActiveFilter()) loadMap();
@@ -2548,6 +2559,84 @@
   document.getElementById('entityNextBtn').addEventListener('click', function () { state.entityOffset = state.entityOffset + PAGE_SIZE; loadEntityPage(); });
   document.getElementById('recordBackBtn').addEventListener('click', closeRecordPage);
 
+  // ---------- shareable search URL: #/zoek/<type>?q=...&gemeente=...&pagina=2&weergave=kaart ----------
+  // Idea taken from kvistgaard/opsis (syncUrl): every change to the search -- type, search
+  // term, any filter, page, table/map -- is written into the URL with history.replaceState,
+  // so the address bar always holds a link to exactly what is on screen, without adding a
+  // back-button step per click. Opening an entity or record page still pushes (location.hash
+  // = ...), so Back from there returns to this search. A plain first visit keeps a clean URL.
+  var ZOEK_HASH_RE = /^#\/zoek\/(rijksmonument|gezicht|werelderfgoed|complex)(?:\?(.*))?$/;
+  // [url parameter, state key, value is a URI]
+  var URL_FILTERS = {
+    rijksmonument: [['monumentaard', 'monumentaard', true], ['status', 'juridischeStatus', true], ['functie', 'functieUri', true],
+      ['provincie', 'provincieUri', true], ['gemeente', 'gemeenteUri', true], ['plaats', 'plaats', false]],
+    gezicht: [['type', 'gezichtTypeUri', true]],
+    werelderfgoed: [['type', 'werelderfgoedTypeUri', true]],
+    complex: []
+  };
+  // Filters whose option list isn't loaded up front (search-only lists), or not yet at boot.
+  var URL_LABEL_DIMS = { functieUri: 'functie', gemeenteUri: 'gemeente', gezichtTypeUri: 'gezichtType', werelderfgoedTypeUri: 'werelderfgoedType' };
+
+  function browseHash() {
+    var p = new URLSearchParams();
+    if (state.search) p.set('q', state.search);
+    URL_FILTERS[state.browseType].forEach(function (f) { if (state[f[1]]) p.set(f[0], state[f[1]]); });
+    if (state.offset) p.set('pagina', String(Math.floor(state.offset / PAGE_SIZE) + 1));
+    if (state.tab === 'map') p.set('weergave', 'kaart');
+    var qs = p.toString();
+    if (!qs && state.browseType === 'rijksmonument') return '';
+    return '#/zoek/' + state.browseType + (qs ? '?' + qs : '');
+  }
+  function syncBrowseUrl() {
+    if (state.view !== 'browse') return;
+    var h = browseHash();
+    if (h === location.hash || (!h && !location.hash)) return;
+    history.replaceState(null, '', location.pathname + location.search + h);
+  }
+
+  // Values from a link are untrusted: URIs go into queries between angle brackets, so only
+  // well-formed http(s) IRIs are accepted (iriSafe); literals are escaped by the query
+  // builders as always. Anything that doesn't pass is dropped, not guessed at.
+  function applyBrowseHash(type, qs) {
+    var p = new URLSearchParams(qs || '');
+    var typeChanged = type !== state.browseType;
+    if (typeChanged) {
+      state.browseType = type;
+      document.querySelectorAll('.type-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-type') === type); });
+      updateTypeChrome();
+    }
+    resetAllFilters();
+    state.search = (p.get('q') || '').trim().slice(0, 200);
+    document.getElementById('searchInput').value = state.search;
+    URL_FILTERS[type].forEach(function (f) {
+      var v = p.get(f[0]);
+      if (!v || (f[2] && !iriSafe(v))) return;
+      state[f[1]] = v.slice(0, 500);
+      if (URL_LABEL_DIMS[f[1]]) {
+        var dim = URL_LABEL_DIMS[f[1]];
+        resolveEntityLabel(dim, v).then(function (label) {
+          if (state[f[1]] !== v) return;
+          state.filterLabels[dim] = label;
+          if (lastCount !== null) renderResultCount(lastCount);
+        }).catch(function () { /* chip keeps its generic name */ });
+      }
+    });
+    var page = parseInt(p.get('pagina'), 10);
+    state.offset = page > 1 && page < 100000 ? (page - 1) * PAGE_SIZE : 0;
+    var wantMap = p.get('weergave') === 'kaart' && !TYPES_WITHOUT_MAP[type];
+    if (typeChanged) loadFacets();
+    else {
+      renderMonumentaardFacet(); renderJuridischeStatusFacet(); renderFunctieFacet();
+      renderProvincieFacet(); renderGemeenteFacet(); renderPlaatsFacet();
+      renderGezichtTypeFacet(); renderWerelderfgoedTypeFacet();
+    }
+    setTab(wantMap ? 'map' : 'table');
+    maybeLoadResults();
+    if (wantMap) {
+      if (leafletMap) setTimeout(function () { leafletMap.invalidateSize(); }, 0);
+    }
+  }
+
   var ENTITY_HASH_RE = /^#\/entity\/(monumentaard|juridischeStatus|functie|provincie|gemeente|plaats|complex|gezichtType|gezichtStatus|werelderfgoedType|werelderfgoedStatus)\/(.+)$/;
   var RECORD_HASH_RE = /^#\/record\/(rijksmonument|gezicht|werelderfgoed)\/(.+)$/;
   function handleHashRoute(fromBoot) {
@@ -2573,6 +2662,15 @@
         return;
       }
       openRecordPage(rm[1], recordId, true);
+      return;
+    }
+    var zm = ZOEK_HASH_RE.exec(location.hash);
+    if (zm) {
+      // Compared before closing a page: closing rewrites the hash to the current search.
+      var differs = location.hash !== browseHash();
+      if (state.view === 'entity') closeEntityPage();
+      else if (state.view === 'record') closeRecordPage();
+      if (differs) applyBrowseHash(zm[1], zm[2]);
       return;
     }
     if (!fromBoot) {

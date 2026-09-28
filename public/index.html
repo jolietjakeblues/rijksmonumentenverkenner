@@ -168,6 +168,10 @@
     background: var(--grey-soft); position: sticky; top: 0; z-index: 2; /* above the sticky .detail-inner */
   }
   .table-scroll { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+  .sort-btn { font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; white-space: nowrap; }
+  .sort-btn:hover, .sort-btn.active { color: var(--gold); }
+  .sort-arrow { font-size: 9px; opacity: 0.7; }
+  .sort-btn.active .sort-arrow { opacity: 1; }
   /* On a phone the four-column table is wider than its box and scrolls sideways inside it.
      An expanded row spans that full table width, so without this its text ran off the right
      edge. The row's content is capped to the box's visible width (cqw of .table-scroll) and
@@ -524,6 +528,7 @@
     recordId: null,
     entityOffset: 0,
     filterLabels: {},     // labels for filters restored from a #/zoek link, before their option lists know them
+    sort: null,           // null (default order) or { key: 'naam'|'nummer'|'jaar', dir: 'asc'|'desc' } -- see SORT_KEYS
     facetOpen: { monumentaard: false, juridischeStatus: false, functie: false, provincie: false, gemeente: false, plaats: false, gezichtType: false, werelderfgoedType: false }
   };
 
@@ -644,7 +649,50 @@
     return lines.join('\n    ');
   }
 
+  // ---------- column sorting (todo #11) ----------
+  // Which columns sort, per type, and the pattern that binds ?sortVal for each. Measured live
+  // (2026-09-28, uncached, first page) on the widest Rijksmonument filter, juridische status
+  // "rijksmonument" (~63k): default URI order 8 s, by naam ~18 s, by rijksmonumentnummer 34-48 s.
+  // Naam stays well inside the endpoint's ~60 s time-out; rijksmonumentnummer doesn't reliably,
+  // so Rijksmonumenten sort by naam only. Gezicht/Werelderfgoed/Complex are small (<3k, 0.6-1.8 s).
+  // Numbers are strings in CEO (xsd:string), so they sort by length first, then as text -- the
+  // same order as numeric for whole numbers, without a per-row cast.
+  var NAAM_SORT = function (s) { return s + ' ceo:heeftNaam ?sortNaamObj . ?sortNaamObj ceo:naam ?sortVal .'; };
+  var SORT_KEYS = {
+    rijksmonument: { naam: { pattern: NAAM_SORT } },
+    gezicht: { naam: { pattern: NAAM_SORT }, nummer: { pattern: function (s) { return s + ' ceo:gezichtsnummer ?sortVal .'; }, numeric: true } },
+    werelderfgoed: { naam: { pattern: NAAM_SORT }, jaar: { pattern: function (s) { return s + ' ceo:jaarVanInschrijving ?sortVal .'; }, numeric: true } },
+    complex: { naam: { pattern: NAAM_SORT }, nummer: { pattern: function (s) { return s + ' ceo:complexnummer ?sortVal .'; }, numeric: true } }
+  };
+  function activeSort() {
+    var keys = SORT_KEYS[state.browseType];
+    return state.sort && keys[state.sort.key] ? { def: keys[state.sort.key], dir: state.sort.dir } : null;
+  }
+  // Rows without a value (a nameless monument) go last in both directions; ties fall back to
+  // the subject so paging stays stable.
+  function sortOrderBy(sort, subj) {
+    var d = function (e) { return sort.dir === 'desc' ? 'DESC(' + e + ')' : e; };
+    var keys = sort.def.numeric ? [d('STRLEN(STR(?sortKey))'), d('STR(?sortKey)')] : [d('LCASE(STR(?sortKey))')];
+    return 'ORDER BY (!BOUND(?sortKey)) ' + keys.join(' ') + ' ' + subj;
+  }
+  // subj: the variable the caller reads back (?rm, ?g, ?co). One sort value per subject via
+  // SAMPLE, so a monument with two names still takes one row.
+  function sortedIdsQuery(subj, where, sort) {
+    return [
+      CEO_PREFIXES,
+      'SELECT ' + subj + ' (SAMPLE(?sortVal) AS ?sortKey) WHERE {',
+      '    ' + where,
+      '    OPTIONAL { ' + sort.def.pattern(subj) + ' }',
+      '}',
+      'GROUP BY ' + subj,
+      sortOrderBy(sort, subj),
+      'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset
+    ].join('\n');
+  }
+
   function buildIdsQuery() {
+    var sort = activeSort();
+    if (sort) return sortedIdsQuery('?rm', innerWhere(), sort);
     return [
       CEO_PREFIXES,
       'SELECT DISTINCT ?rm WHERE {',
@@ -877,6 +925,8 @@
     return lines.join('\n    ');
   }
   function buildGezichtIdsQuery() {
+    var sort = activeSort();
+    if (sort) return sortedIdsQuery('?g', gInnerWhere(), sort);
     return [CEO_PREFIXES, 'SELECT DISTINCT ?g WHERE {', '    ' + gInnerWhere(), '}', 'ORDER BY ?g', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
   }
   function buildGezichtCountQuery() {
@@ -972,7 +1022,14 @@
     }
     return lines.join('\n    ');
   }
+  // Grouped by werelderfgoednummer (one row per site across its duplicate registrations, see
+  // analyse.md §14), so a sort value is sampled per group too.
   function buildWerelderfgoedIdsQuery() {
+    var sort = activeSort();
+    if (sort) {
+      return [CEO_PREFIXES, 'SELECT (SAMPLE(?w) AS ?wPicked) (SAMPLE(?sortVal) AS ?sortKey) WHERE {', '    ' + wInnerWhere(),
+        '    OPTIONAL { ' + sort.def.pattern('?w') + ' }', '}', 'GROUP BY ?nr', sortOrderBy(sort, '?nr'), 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
+    }
     return [CEO_PREFIXES, 'SELECT (SAMPLE(?w) AS ?wPicked) WHERE {', '    ' + wInnerWhere(), '}', 'GROUP BY ?nr', 'ORDER BY ?nr', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
   }
   function buildWerelderfgoedCountQuery() {
@@ -1069,6 +1126,8 @@
     return lines.join('\n    ');
   }
   function buildComplexIdsQuery() {
+    var sort = activeSort();
+    if (sort) return sortedIdsQuery('?co', coInnerWhere(), sort);
     return [CEO_PREFIXES, 'SELECT DISTINCT ?co WHERE {', '    ' + coInnerWhere(), '}', 'ORDER BY ?co', 'LIMIT ' + PAGE_SIZE + ' OFFSET ' + state.offset].join('\n');
   }
   function buildComplexCountQuery() {
@@ -2210,6 +2269,7 @@
     var entityType = ENTITY_DIM_TYPE[dim] || 'rijksmonument';
     if (entityType !== state.browseType) {
       state.browseType = entityType;
+      state.sort = null;
       document.querySelectorAll('.type-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-type') === entityType); });
       updateTypeChrome();
       loadFacets();
@@ -2488,32 +2548,57 @@
     });
   });
 
+  // A sortable column header: a real button (keyboard, screen reader), with aria-sort on its <th>
+  // set by renderSortHeaders(). Click cycles ascending -> descending -> default order.
+  function sortHead(key, label) {
+    return '<button type="button" class="sort-btn" data-sort="' + key + '">' + label + '<span class="sort-arrow" aria-hidden="true"></span></button>';
+  }
+  function renderSortHeaders() {
+    document.querySelectorAll('#resultsThead .sort-btn').forEach(function (btn) {
+      var on = state.sort && state.sort.key === btn.getAttribute('data-sort') ? state.sort.dir : null;
+      btn.classList.toggle('active', !!on);
+      btn.querySelector('.sort-arrow').textContent = on === 'asc' ? ' ▲' : on === 'desc' ? ' ▼' : ' ⇅';
+      btn.parentElement.setAttribute('aria-sort', on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none');
+      btn.title = on === 'asc' ? 'Sorteer aflopend' : on === 'desc' ? 'Terug naar standaardvolgorde' : 'Sorteer oplopend';
+    });
+  }
+  document.getElementById('resultsThead').addEventListener('click', function (e) {
+    var btn = e.target.closest('.sort-btn');
+    if (!btn) return;
+    var key = btn.getAttribute('data-sort');
+    var cur = state.sort && state.sort.key === key ? state.sort.dir : null;
+    state.sort = cur === null ? { key: key, dir: 'asc' } : cur === 'asc' ? { key: key, dir: 'desc' } : null;
+    state.offset = 0; state.openRow = null;
+    renderSortHeaders();
+    maybeLoadResults();
+  });
+
   var TYPE_CHROME = {
     rijksmonument: {
       searchLabel: 'Zoek op naam of nummer',
       searchPlaceholder: 'bv. kerk, molen, of 20902…',
-      theadHtml: '<tr><th>Naam</th><th>Gemeente</th><th>Functie</th><th>Status</th></tr>',
+      theadHtml: '<tr><th>' + sortHead('naam', 'Naam') + '</th><th>Gemeente</th><th>Functie</th><th>Status</th></tr>',
       mapHelp: 'Toont alleen de huidige pagina met resultaten (niet de hele gefilterde set) &mdash; en alleen monumenten met een officieel geregistreerd punt uit de graph <code>punten</code>. Geen zelfberekende centroïden van polygonen.',
       mapNote: 'Toont alleen de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad), en alleen monumenten met een officieel geregistreerd punt uit de graph <code>punten</code>. Geen zelfberekende centroïden van polygonen.'
     },
     gezicht: {
       searchLabel: 'Zoek op naam',
       searchPlaceholder: 'bv. Amsterdam, Elburg…',
-      theadHtml: '<tr><th>Naam</th><th>Type</th><th>Gezichtsnummer</th></tr>',
+      theadHtml: '<tr><th>' + sortHead('naam', 'Naam') + '</th><th>Type</th><th>' + sortHead('nummer', 'Gezichtsnummer') + '</th></tr>',
       mapHelp: 'Toont de contour (polygoon) van elk beschermd gezicht op de huidige pagina.',
       mapNote: 'Toont de contour (polygoon) van elk beschermd gezicht op de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad).'
     },
     werelderfgoed: {
       searchLabel: 'Zoek op naam',
       searchPlaceholder: 'bv. Waddenzee, Kinderdijk…',
-      theadHtml: '<tr><th>Naam</th><th>Type</th><th>Jaar van inschrijving</th></tr>',
+      theadHtml: '<tr><th>' + sortHead('naam', 'Naam') + '</th><th>Type</th><th>' + sortHead('jaar', 'Jaar van inschrijving') + '</th></tr>',
       mapHelp: 'Toont de contour (polygoon) van elke werelderfgoedlocatie op de huidige pagina.',
       mapNote: 'Toont de contour (polygoon) van elke werelderfgoedlocatie op de <strong>huidige pagina</strong> (dezelfde als het Tabel-tabblad).'
     },
     complex: {
       searchLabel: 'Zoek op naam of complexnummer',
       searchPlaceholder: 'bv. buitenplaats, of 531016…',
-      theadHtml: '<tr><th>Naam</th><th>Complexnummer</th><th>Onderdelen</th></tr>',
+      theadHtml: '<tr><th>' + sortHead('naam', 'Naam') + '</th><th>' + sortHead('nummer', 'Complexnummer') + '</th><th>Onderdelen</th></tr>',
       mapHelp: '',
       mapNote: ''
     }
@@ -2525,6 +2610,7 @@
     document.getElementById('searchLabel').textContent = meta.searchLabel;
     document.getElementById('searchInput').placeholder = meta.searchPlaceholder;
     document.getElementById('resultsThead').innerHTML = meta.theadHtml;
+    renderSortHeaders();
     document.getElementById('mapHelpText').innerHTML = meta.mapHelp;
     document.getElementById('mapNote').innerHTML = meta.mapNote;
     document.querySelectorAll('[data-type-group]').forEach(function (el) {
@@ -2541,10 +2627,15 @@
     }
   }
 
+  // The static <thead> in the HTML has no sort buttons; render the real one once at boot.
+  document.getElementById('resultsThead').innerHTML = TYPE_CHROME[state.browseType].theadHtml;
+  renderSortHeaders();
+
   document.querySelectorAll('.type-tab').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (btn.classList.contains('active')) return;
       state.browseType = btn.getAttribute('data-type');
+      state.sort = null;
       document.querySelectorAll('.type-tab').forEach(function (b) { b.classList.toggle('active', b === btn); });
       updateTypeChrome();
       resetAllFilters();
@@ -2581,6 +2672,7 @@
     var p = new URLSearchParams();
     if (state.search) p.set('q', state.search);
     URL_FILTERS[state.browseType].forEach(function (f) { if (state[f[1]]) p.set(f[0], state[f[1]]); });
+    if (activeSort()) p.set('sorteer', state.sort.key + (state.sort.dir === 'desc' ? '-af' : ''));
     if (state.offset) p.set('pagina', String(Math.floor(state.offset / PAGE_SIZE) + 1));
     if (state.tab === 'map') p.set('weergave', 'kaart');
     var qs = p.toString();
@@ -2600,6 +2692,8 @@
   function applyBrowseHash(type, qs) {
     var p = new URLSearchParams(qs || '');
     var typeChanged = type !== state.browseType;
+    var sm = /^(naam|nummer|jaar)(-af)?$/.exec(p.get('sorteer') || '');
+    state.sort = sm && SORT_KEYS[type][sm[1]] ? { key: sm[1], dir: sm[2] ? 'desc' : 'asc' } : null;
     if (typeChanged) {
       state.browseType = type;
       document.querySelectorAll('.type-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-type') === type); });
@@ -2624,6 +2718,7 @@
     var page = parseInt(p.get('pagina'), 10);
     state.offset = page > 1 && page < 100000 ? (page - 1) * PAGE_SIZE : 0;
     var wantMap = p.get('weergave') === 'kaart' && !TYPES_WITHOUT_MAP[type];
+    renderSortHeaders();
     if (typeChanged) loadFacets();
     else {
       renderMonumentaardFacet(); renderJuridischeStatusFacet(); renderFunctieFacet();

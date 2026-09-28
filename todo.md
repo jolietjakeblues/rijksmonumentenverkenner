@@ -66,7 +66,14 @@ Punten uit de externe review op de live site (zie [analyse.md §14](analyse.md))
 
 ---
 
-## 7. Bron-URI en begripslink per object
+## 7. ✅ Bron-URI en begripslink per object (2026-09-28)
+
+**Geïmplementeerd** (idee overgenomen van [kvistgaard/opsis](https://github.com/kvistgaard/opsis)): elke detailweergave (uitgeklapte rij, recordpagina) en elke facetpagina toont nu de bron-URI met kopieerknop en een link naar de linked-data-pagina, plus een inklapbaar blok "Alle gegevens als linked data": alle uitgaande triples en de inkomende links ("Verwezen vanuit"), pas opgehaald bij openklikken. Elke URI daarin is zelf weer uit te klappen (max. 4 niveaus), zodat bv. een naamloos `functie/131233`-knooppunt ter plekke toont wat het is ("Toegangshek"). Query-vorm: eerst begrenzen in een subselect, dan pas labels erbij — 0,8 s i.p.v. 7,4 s op het status-begrip "rijksmonument" (63.102 inkomende links). Plaats heeft geen URI (letterlijke waarde), dus daar geen blok.
+
+Tegelijk: time-outs van het endpoint (TriplyDB geeft na ~1 minuut HTTP 504 `{"message":"Query has timed out."}`) worden nu als zodanig gemeld i.p.v. als algemene fout, ook in de live facetzoekopdracht (die had helemaal geen foutafhandeling). Een eventueel afgekapt antwoord (HTTP 206, Virtuoso-stijl) wordt getoond met een waarschuwing dat aantallen onvolledig kunnen zijn.
+
+Oorspronkelijke notitie:
+
 
 **Doel:** reviewer wil, "voor jouw vakgebied", per object de eigen bron-URI zichtbaar (voor wie verder wil, bv. naar de linked-data-pagina zelf) en per begrip (facetwaarde) een link naar de begripsbeschrijving (bv. de SKOS-conceptpagina).
 
@@ -113,6 +120,12 @@ Punten uit de externe review op de live site (zie [analyse.md §14](analyse.md))
 **Aanpak:** klikbare kolomkoppen die `ORDER BY` in de bestaande querybouwers aanpassen (bv. `ORDER BY ?naam` i.p.v. `ORDER BY ?rm`) — let op: sorteren op een `OPTIONAL`-gebonden veld zoals naam vereist een aparte, iets duurdere queryvorm (een ongebonden `?naam` sorteert anders dan een gebonden), dus eerst even testen tegen live data of dat de bekende performance-gevoeligheid van dit endpoint raakt.
 
 **Geschatte impact:** klein tot middel, afhankelijk van de performance-test.
+
+---
+
+## 12. Horizontale overflow op mobiel bij een uitgeklapte rij
+
+**Gevonden tijdens testen (2026-09-28), bestond al vóór de linked-data-wijziging:** op 390 px breed wordt de hele pagina ~490 px te breed zodra een resultaatrij is uitgeklapt (al ~73 px met alleen de resultatentabel). De facettenkolom rekt mee tot 864 px. Nog niet opgelost.
 
 ---
 

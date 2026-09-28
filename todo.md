@@ -110,7 +110,20 @@ Oorspronkelijke notitie:
 
 ---
 
-## 10. Toegankelijkheid: kaartmarker-labels en contrastcheck
+## 10. ✅ Toegankelijkheid: kaartmarker-labels en contrastcheck (2026-09-28)
+
+**Kaart:** markers heten nu "naam, rijksmonument nummer" (Leaflet-`alt` en `title`) in plaats van allemaal "Marker"; ze waren al met het toetsenbord bereikbaar. De kaartcontainer heeft een `aria-label`, contouren van gezichten/werelderfgoed hun naam (`role="img"` + `aria-label`).
+
+**Contrast, gemeten:** axe-core 4.13 (WCAG 2.0/2.1 A + AA) over negen toestanden (start, open facetten, resultaten, uitgeklapte rij met linked-data-blok, gesorteerd, kaart rijksmonumenten, kaart gezichten, facetpagina, recordpagina): **0 overtredingen**, vóór en na. Zelf nagerekend voor alle tekst/achtergrond-combinaties uit de CSS: alle tekst haalt AA (4,5:1); `--muted` zit op 5,3–7,0, `--ink` en `--gold` halen AAA. axe's "niet zeker"-gevallen nagelopen: het sorteerpijltje (decoratief, `aria-hidden`) en facetopties onder de scrollrand (zelfde kleuren, ≥ 6,5:1).
+
+**Wel opgelost, want axe controleert dit niet (WCAG 1.4.11, niet-tekst-contrast ≥ 3:1):**
+- rand van invoervelden: `--border` gaf 1,26:1 tegen het paneel; nu `--input-border` `#7d6f59` (3,52:1 paneel, 3,78:1 veld);
+- rand van kaartcontouren: `#e0705f` gaf 1,86:1 op OSM-bos; nu `#a83a2c`, minimaal 3,75:1 tegen alle OSM-vlakkleuren (land, water, bos, gras, woonwijk, gebouw, weg, akker). De vulling blijft `#e0705f`.
+
+**Bewust gelaten:** kaders van knoppen en panelen (`--border`) — die dragen een tekstlabel, dus het kader is niet nodig om ze te herkennen. Contouren op de kaart zijn niet met het toetsenbord te bereiken (een Leaflet-beperking); de tabel toont dezelfde objecten.
+
+Oorspronkelijke notitie:
+
 
 **Doel:** kaartmarkers heten in de toegankelijkheidsweergave allemaal "Marker" i.p.v. de objectnaam of het monumentnummer; de gedempte, kleine teksten (o.a. `--muted`-kleur) zijn nooit op contrast/leesbaarheid getest (geen WCAG-meting uitgevoerd door de reviewer).
 

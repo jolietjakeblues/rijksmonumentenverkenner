@@ -13,6 +13,10 @@
     --ink: #ece4d4;
     --muted: #ab9d84;
     --border: #362c1e;
+    /* Input fields need a visible edge (WCAG 1.4.11, 3:1 against what surrounds them): --border
+       is 1.26:1 on the panel, so a text field was barely distinguishable from its background.
+       This is 3.52:1 on --surface and 3.78:1 on --paper (the field itself). */
+    --input-border: #7d6f59;
     --brick: #e0705f;
     --brick-ink: #17110f;
     --gold: #f0c14e;
@@ -87,7 +91,7 @@
 
   input[type="search"], input[type="text"] {
     width: 100%; font-family: var(--font-body); font-size: 13.5px; padding: 8px 10px;
-    border: 1px solid var(--border); border-radius: 3px; background: var(--paper); color: var(--ink);
+    border: 1px solid var(--input-border); border-radius: 3px; background: var(--paper); color: var(--ink);
   }
 
   .type-search { margin-bottom: 8px; }
@@ -1354,6 +1358,8 @@
   function ensureLeafletMap() {
     if (leafletMap) return;
     leafletMap = L.map(document.getElementById('mapEl')).setView([52.1, 5.3], 7); // NL-centered default
+    // Leaflet makes the map container focusable (arrow keys pan) but leaves it unnamed.
+    document.getElementById('mapEl').setAttribute('aria-label', 'Kaart met de resultaten van de huidige pagina');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-bijdragers'
@@ -1379,7 +1385,11 @@
         bounds.push(pt);
         var rmnr = r.rmnrL ? r.rmnrL.value : null;
         var link = rmnr ? '<br><a href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">Monumentenregister &rarr;</a>' : '';
-        var marker = L.marker(pt).addTo(leafletMap);
+        // Leaflet names every marker "Marker" (its default alt); screen reader users heard the
+        // same word for each monument. The name plus number says which one it is, and the
+        // title shows it on hover too. Markers are already keyboard-focusable buttons.
+        var markerLabel = naam + (rmnr ? ', rijksmonument ' + rmnr : '');
+        var marker = L.marker(pt, { alt: markerLabel, title: markerLabel }).addTo(leafletMap);
         marker.bindPopup('<div class="map-popup"><strong>' + esc(naam) + '</strong>' + link + '</div>');
         leafletShapes.push(marker);
       } else {
@@ -1388,7 +1398,12 @@
         mp.forEach(function (ringsOfOnePolygon) { ringsOfOnePolygon.forEach(function (ring) { bounds = bounds.concat(ring); }); });
         var url = r.urlL ? r.urlL.value : null;
         var link2 = url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">' + POLYGON_EXTERNAL_LABEL[bt] + ' &rarr;</a>' : '';
-        var poly = L.polygon(mp, { color: '#e0705f', weight: 2, fillOpacity: 0.25 }).addTo(leafletMap);
+        // Outline #a83a2c: at least 3.75:1 against every OpenStreetMap area colour, forest
+        // included (WCAG 1.4.11); the lighter #e0705f it replaces dropped to 1.86:1 on forest.
+        // The fill keeps the lighter brick, so the area still reads as the same colour.
+        var poly = L.polygon(mp, { color: '#a83a2c', weight: 2, fillColor: '#e0705f', fillOpacity: 0.25 }).addTo(leafletMap);
+        // role=img: an aria-label is only allowed on an SVG path that has a role.
+        if (poly.getElement()) { poly.getElement().setAttribute('role', 'img'); poly.getElement().setAttribute('aria-label', naam); }
         poly.bindPopup('<div class="map-popup"><strong>' + esc(naam) + '</strong>' + link2 + '</div>');
         leafletShapes.push(poly);
       }

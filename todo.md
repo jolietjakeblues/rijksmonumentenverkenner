@@ -123,9 +123,14 @@ Oorspronkelijke notitie:
 
 ---
 
-## 12. Horizontale overflow op mobiel bij een uitgeklapte rij
+## 12. ✅ Horizontale overflow op mobiel bij een uitgeklapte rij (2026-09-28)
 
-**Gevonden tijdens testen (2026-09-28), bestond al vóór de linked-data-wijziging:** op 390 px breed wordt de hele pagina ~490 px te breed zodra een resultaatrij is uitgeklapt (al ~73 px met alleen de resultatentabel). De facettenkolom rekt mee tot 864 px. Nog niet opgelost.
+**Opgelost.** Op 390 px werd de pagina ~490 px te breed zodra een rij was uitgeklapt (en ~73 px met alleen de tabel); de recordpagina had hetzelfde. Drie oorzaken:
+- `.detail-grid` (`repeat(auto-fit, minmax(150px, 1fr))` + `max-width: 900px`): bij het bepalen van de minimale breedte telt auto-fit zijn kolommen tegen die 900 px, dus 5 × 150 + gaten = 830 px minimaal, en de tabelcel kon niet smaller. Opgelost met `contain: inline-size`.
+- `.layout` gebruikte `1fr`, en dat krimpt niet onder de inhoud; nu `minmax(0, 1fr)`, zodat een brede tabel binnen `.table-scroll` scrollt i.p.v. de hele pagina op te rekken.
+- lange URI's in het linked-data-blok: `table-layout: fixed` + `overflow-wrap: anywhere`.
+
+De resultatentabel met vier kolommen blijft op 390 px ~90 px breder dan haar kader en scrollt daarbinnen zijwaarts (bedoeld). De inhoud van een uitgeklapte rij is begrensd tot de zichtbare breedte van dat kader (`100cqw`) en blijft sticky links, zodat die niet mee wegscrollt. Gemeten op 390/700/1200 px: resultaten, uitgeklapte rij met open linked-data-blok, facetpagina en recordpagina, overal 0 px overflow.
 
 ---
 

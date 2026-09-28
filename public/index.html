@@ -1402,7 +1402,8 @@
         // included (WCAG 1.4.11); the lighter #e0705f it replaces dropped to 1.86:1 on forest.
         // The fill keeps the lighter brick, so the area still reads as the same colour.
         var poly = L.polygon(mp, { color: '#a83a2c', weight: 2, fillColor: '#e0705f', fillOpacity: 0.25 }).addTo(leafletMap);
-        if (poly.getElement()) poly.getElement().setAttribute('aria-label', naam);
+        // role=img: an aria-label is only allowed on an SVG path that has a role.
+        if (poly.getElement()) { poly.getElement().setAttribute('role', 'img'); poly.getElement().setAttribute('aria-label', naam); }
         poly.bindPopup('<div class="map-popup"><strong>' + esc(naam) + '</strong>' + link2 + '</div>');
         leafletShapes.push(poly);
       }

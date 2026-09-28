@@ -35,16 +35,24 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/sparql') {
-      const query = url.searchParams.get('query');
+      // The page POSTs the query as a form field (no URL-length ceiling); GET ?query= still
+      // works for anything that links to the proxy directly.
+      let query = url.searchParams.get('query');
+      if (request.method === 'POST') {
+        const type = request.headers.get('Content-Type') || '';
+        if (type.includes('application/x-www-form-urlencoded')) query = new URLSearchParams(await request.text()).get('query');
+      } else if (request.method !== 'GET') {
+        return new Response('Method not allowed', { status: 405, headers: { 'Allow': 'GET, POST' } });
+      }
       if (!isAllowedQuery(query)) {
         return new Response('Query not allowed: only SELECT/ASK queries up to ' + MAX_QUERY_LENGTH + ' characters are proxied.', { status: 400 });
       }
 
-      const upstream = new URL(UPSTREAM);
-      upstream.searchParams.set('query', query);
-
-      const upstreamResponse = await fetch(upstream, {
-        headers: { 'Accept': 'application/sparql-results+json' }
+      // Forwarded as a form POST too, so a long query doesn't hit a URL limit upstream either.
+      const upstreamResponse = await fetch(UPSTREAM, {
+        method: 'POST',
+        headers: { 'Accept': 'application/sparql-results+json', 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ query })
       });
 
       return new Response(upstreamResponse.body, {

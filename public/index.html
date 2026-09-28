@@ -43,9 +43,12 @@
   .intro { font-size: 13px; color: var(--muted); margin: 0 0 22px; max-width: 90ch; }
   .intro strong { color: var(--ink); font-weight: 600; }
 
-  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: start; }
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track can't shrink below its content's min-content
+     width, so a wide results table pushed the whole page wider than a phone screen instead of
+     scrolling inside .table-scroll. */
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; }
   .layout[hidden] { display: none; }
-  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 
   .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; }
 
@@ -162,9 +165,16 @@
   thead th {
     text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 10.5px; letter-spacing: 0.06em;
     text-transform: uppercase; color: var(--muted); padding: 9px 12px; border-bottom: 1px solid var(--border);
-    background: var(--grey-soft); position: sticky; top: 0;
+    background: var(--grey-soft); position: sticky; top: 0; z-index: 2; /* above the sticky .detail-inner */
   }
   .table-scroll { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+  /* On a phone the four-column table is wider than its box and scrolls sideways inside it.
+     An expanded row spans that full table width, so without this its text ran off the right
+     edge. The row's content is capped to the box's visible width (cqw of .table-scroll) and
+     sticks to its left edge, so it stays readable while the columns scroll. On wider screens
+     the table fits and this changes nothing. */
+  .table-scroll { container-type: inline-size; }
+  .detail-inner { position: sticky; left: 16px; max-width: calc(100cqw - 32px); }
   tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
   tbody tr.row { cursor: pointer; }
   tbody tr.row:hover { background: var(--grey-soft); }
@@ -180,7 +190,11 @@
   tr.detail-row td { background: var(--paper); padding: 16px; }
   .detail-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; margin: 0 0 4px; }
   .detail-sub { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
-  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 20px; font-size: 12px; max-width: 900px; }
+  /* contain: inline-size -- when a table sizes this grid's cell, auto-fit counts its columns
+     against max-width (900px -> 5 x 150px + gaps = 830px min-content), which forced every
+     expanded row and the record page ~490px wider than a 390px phone. Containment keeps the
+     grid from imposing that width; it still fills the cell and wraps to fewer columns. */
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 20px; font-size: 12px; max-width: 900px; contain: inline-size; }
   .detail-grid dt { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 2px; }
   .detail-grid dd { margin: 0; }
   .no-val { color: var(--muted); font-style: italic; }
@@ -206,7 +220,11 @@
   .ld-body { margin-top: 8px; }
   .ld-meta { font-size: 11.5px; color: var(--muted); margin: 0 0 6px; }
   .ld-h { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 4px; }
-  table.ld-table { font-size: 12px; width: 100%; }
+  /* fixed layout + anywhere-wrapping: values are often long bare URIs, which would otherwise
+     set the table's minimum width and push the expanded row wider than a phone screen. */
+  table.ld-table { font-size: 12px; width: 100%; table-layout: fixed; }
+  .ld-table td { overflow-wrap: anywhere; }
+  .ld-table td.ld-p { overflow-wrap: break-word; hyphens: auto; } /* property names are Dutch words: hyphenate (html lang=nl) rather than split anywhere */
   tr.detail-row .ld-table td, .ld-table td { background: transparent; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--grey-soft); vertical-align: top; }
   .ld-table td.ld-p { width: 32%; min-width: 120px; color: var(--muted); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
   .ld-lit { white-space: pre-line; overflow-wrap: anywhere; }
@@ -1721,14 +1739,14 @@
   function detailRowHtmlRijksmonument(row, colspan) {
     var rmnr = row.rmnrL ? row.rmnrL.value : null;
     var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
-    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+    return '<tr class="detail-row"><td colspan="' + colspan + '"><div class="detail-inner">' +
       '<p class="detail-title">' + esc(naam) + '</p>' +
       '<p class="detail-sub">' + (rmnr ? 'Rijksmonumentnummer ' + esc(rmnr) : 'Geen rijksmonumentnummer bekend') + '</p>' +
       detailFieldsHtmlRijksmonument(row) +
       omschrijvingHtml(row) +
       (rmnr ? '<a class="register-link" href="https://monumentenregister.cultureelerfgoed.nl/monumenten/' + esc(rmnr) + '" target="_blank" rel="noopener">Bekijk in het Monumentenregister &rarr;</a>' : '') +
       ldSectionHtml(row.rm && row.rm.value) +
-      '</td></tr>';
+      '</div></td></tr>';
   }
 
   function detailFieldsHtmlGezicht(row) {
@@ -1743,13 +1761,13 @@
     var nr = row.nrL ? row.nrL.value : null;
     var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
     var url = row.urlL ? row.urlL.value : null;
-    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+    return '<tr class="detail-row"><td colspan="' + colspan + '"><div class="detail-inner">' +
       '<p class="detail-title">' + esc(naam) + '</p>' +
       '<p class="detail-sub">' + (nr ? 'Gezichtsnummer ' + esc(nr) : 'Geen gezichtsnummer bekend') + '</p>' +
       detailFieldsHtmlGezicht(row) +
       (url ? '<a class="register-link" href="' + esc(url) + '" target="_blank" rel="noopener">Meer info op kennis.cultureelerfgoed.nl &rarr;</a>' : '') +
       ldSectionHtml(row.g && row.g.value) +
-      '</td></tr>';
+      '</div></td></tr>';
   }
 
   function detailFieldsHtmlWerelderfgoed(row) {
@@ -1764,13 +1782,13 @@
     var nr = row.nrL ? row.nrL.value : null;
     var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
     var url = row.urlL ? row.urlL.value : null;
-    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+    return '<tr class="detail-row"><td colspan="' + colspan + '"><div class="detail-inner">' +
       '<p class="detail-title">' + esc(naam) + '</p>' +
       '<p class="detail-sub">' + (nr ? 'Werelderfgoednummer ' + esc(nr) : 'Geen werelderfgoednummer bekend') + '</p>' +
       detailFieldsHtmlWerelderfgoed(row) +
       (url ? '<a class="register-link" href="' + esc(url) + '" target="_blank" rel="noopener">Bekijk op de UNESCO-website &rarr;</a>' : '') +
       ldSectionHtml(row.w && row.w.value) +
-      '</td></tr>';
+      '</div></td></tr>';
   }
 
   function detailFieldsHtmlComplex(row) {
@@ -1787,13 +1805,13 @@
   function detailRowHtmlComplex(row, colspan) {
     var nr = row.nrL ? row.nrL.value : null;
     var naam = row.naamL && row.naamL.value ? row.naamL.value : (nr ? 'Complex ' + nr : '(naam onbekend)');
-    return '<tr class="detail-row"><td colspan="' + colspan + '">' +
+    return '<tr class="detail-row"><td colspan="' + colspan + '"><div class="detail-inner">' +
       '<p class="detail-title">' + esc(naam) + '</p>' +
       '<p class="detail-sub">' + (nr ? 'Complexnummer ' + esc(nr) : 'Geen complexnummer bekend') + '</p>' +
       detailFieldsHtmlComplex(row) +
       omschrijvingHtml(row) +
       ldSectionHtml(row.co && row.co.value) +
-      '</td></tr>';
+      '</div></td></tr>';
   }
 
   var TABLE_COLSPAN = { rijksmonument: 4, gezicht: 3, werelderfgoed: 3, complex: 3 };

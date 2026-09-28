@@ -120,7 +120,25 @@ Oorspronkelijke notitie:
 
 ---
 
-## 11. Sorteren op kolom
+## 11. ✅ Sorteren op kolom (2026-09-28)
+
+**Geïmplementeerd:** klikbare kolomkoppen (knoppen met `aria-sort`), klik wisselt oplopend → aflopend → standaardvolgorde. Welke kolommen, op basis van live metingen (niet-gecachet, eerste pagina):
+
+| Type | Sorteerbaar op | Gemeten |
+|---|---|---|
+| Rijksmonumenten | naam | breedste filter (status "rijksmonument", ~63k): standaard 8 s, naam ~18 s; zoekterm/gemeente 1–3 s |
+| Gezichten | naam, gezichtsnummer | < 1 s |
+| Werelderfgoed | naam, jaar van inschrijving | < 1 s |
+| Complexen | naam, complexnummer | 1–2 s |
+
+**Bewust niet:** rijksmonumentnummer. Kost 34–48 s bij de breedste filters, te dicht bij de time-out van het endpoint (~60 s). Gemeente/functie/status ook niet: dat zijn labels achter extra joins, en waarschijnlijk nog duurder.
+
+Details: nummers zijn `xsd:string` in CEO, dus die sorteren op lengte en dan als tekst (zelfde volgorde als numeriek, zonder cast per rij). Rijen zonder waarde (naamloze monumenten) staan in beide richtingen achteraan; bij gelijke waarde beslist de URI, zodat pagineren stabiel blijft. De sortering zit in de deelbare zoek-URL (`sorteer=naam`, `sorteer=naam-af`); een sortering die voor het type niet bestaat wordt genegeerd. Wisselen van type zet de sortering terug. Facetpagina's (`#/entity/...`) sorteren nog op URI.
+
+Opvallend: namen die met een aanhalingsteken beginnen (`'De Nieuwe Kerk'`) staan vooraan bij A–Z — dat is de tekenvolgorde van het endpoint, niet aangepast.
+
+Oorspronkelijke notitie:
+
 
 **Doel:** resultaten staan nu vast op URI-volgorde (`ORDER BY ?rm`/`?g`/`?w`/`?co`), niet op naam, datum of nummer. Eigen idee, niet uit de review.
 

@@ -100,7 +100,14 @@ Oorspronkelijke notitie:
 
 ---
 
-## 9. Intro herschrijven, jargon naar "Over deze verkenner"
+## 9. ✅ Intro herschrijven, jargon naar "Over deze verkenner" (2026-09-30)
+
+**Geïmplementeerd:** de intro is nu publieksgericht en zonder vaktermen (35 i.p.v. 48 woorden): wat je kunt vinden (rijksmonumenten, gezichten, complexen, werelderfgoed) en wat je kunt doen (zoeken op naam/nummer, verfijnen, tabel of kaart). De technische achtergrond staat in een inklapbaar blok "Over deze verkenner" direct eronder: live uit de linked-data-dienst van de RCE (CHO, SPARQL, geen cache), het datamodel (Cultureel Erfgoed Ontologie), dat het een prototype is en het Monumentenregister leidend, en het zusje Rijkscollectie Verkenner. De meta-regel "Live SPARQL tegen …" en het Engelse label "faceted search" zijn opgegaan in dat blok.
+
+Gemeten op 390 × 844: intro 132 → 94 px, zoekveld begint op 603 i.p.v. 646 px. Het grootste deel van het eerste scherm is nu de hulpbalk (Doorklikken / Facetaantallen / Kaart) — bewust laten staan, want dat is uitleg vóór bezoekers, niet jargon; kan later eventueel ook inklapbaar. Uitklapblok: eerste tabstop, opent met Enter, axe-core 0 overtredingen.
+
+Oorspronkelijke notitie:
+
 
 **Doel:** de huidige intro spreekt ontwikkelaars aan (SPARQL, CEO, ontologie, graph) en neemt in een smalle weergave bijna het hele eerste scherm in. Reviewer stelt voor: korte, publieksgerichte intro bovenaan, technische uitleg naar een aparte sectie/pagina.
 
@@ -169,6 +176,31 @@ Oorspronkelijke notitie:
 - lange URI's in het linked-data-blok: `table-layout: fixed` + `overflow-wrap: anywhere`.
 
 De resultatentabel met vier kolommen blijft op 390 px ~90 px breder dan haar kader en scrollt daarbinnen zijwaarts (bedoeld). De inhoud van een uitgeklapte rij is begrensd tot de zichtbare breedte van dat kader (`100cqw`) en blijft sticky links, zodat die niet mee wegscrollt. Gemeten op 390/700/1200 px: resultaten, uitgeklapte rij met open linked-data-blok, facetpagina en recordpagina, overal 0 px overflow.
+
+---
+
+## 13. Kwaliteitscontrole front-end (2026-09-30)
+
+Volledige controle (domein, metadata, toestanden, toegankelijkheid, SEO, console, performance, responsive, interactie).
+
+**Opgelost:**
+- Leaflet (42 KB JS + CSS van unpkg) laadde bij elk bezoek als blokkerend script vóór de app-code; nu pas bij het eerste gebruik van de kaart (zelfde SRI-hashes, één keer). Mislukt het laden, dan zegt de kaart dat en blijft de tabel werken.
+- Onbekend pad gaf een lege 404 (0 bytes); nu een korte 404-pagina in dezelfde stijl met een link terug (`worker.js`, `noindex`).
+- Geen favicon (elke bezoek een 404 en consolefout op `/favicon.ico`); nu een inline SVG.
+- Geen meta-description, canonical of Open Graph; nu toegevoegd.
+- `<title>` bleef altijd gelijk; nu "naam · Rijksmonumentenverkenner" op facet- en recordpagina's.
+- Koppen sprongen van h2 naar h4/h5 (Omschrijving, Verwezen vanuit); nu h3.
+- Onbekende `#/…`-link viel stil terug op het zoekscherm; nu met melding.
+- Kruisje in filterchip, kopieerknop en ↗ waren 12–17 px; klikvlak nu 24 × 24 (WCAG 2.2, 2.5.8), iconen ongewijzigd.
+
+**Gecontroleerd, in orde:** geen dev-/previewdomeinen; `worker.js`, `todo.md`, `README.md`, `.git`, `package.json` niet publiek; geen `console.log`-resten; geen JS-fouten of -waarschuwingen; axe-core 0 overtredingen in negen toestanden; geen overflow op 320/390/768/1024/1920 px; geen dode links; alle externe links `rel="noopener"`; loading-, empty- en foutmeldingen aanwezig (time-outs sinds #7).
+
+**Open, vraagt een keuze:**
+- **Open Graph-afbeelding:** ontbreekt; vraagt een ontworpen afbeelding (1200 × 630). Nu `twitter:card=summary` zonder beeld.
+- **`robots.txt`** komt van Cloudflare (managed robots.txt met content signals), geen eigen bestand. **`sitemap.xml`** heeft weinig zin: alle pagina's zijn `#/…`-adressen, die zoekmachines niet los indexeren.
+- **Lange lijsten in het linked-data-paneel:** een geneste URI met veel inkomende links (bv. de klasse Rijksmonument) toont tot 200 rijen onder elkaar; kan een "toon meer" na ~20 gebruiken.
+- **Hulpbalk** (Doorklikken / Facetaantallen / Kaart) neemt op mobiel het grootste deel van het eerste scherm in (zie #9).
+- **Preview-builds in Cloudflare** falen bij elke PR (instelling, geen code); zie de notitie bij de laatste PR's.
 
 ---
 

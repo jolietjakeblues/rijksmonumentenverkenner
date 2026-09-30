@@ -179,6 +179,31 @@ De resultatentabel met vier kolommen blijft op 390 px ~90 px breder dan haar kad
 
 ---
 
+## 13. Kwaliteitscontrole front-end (2026-09-30)
+
+Volledige controle (domein, metadata, toestanden, toegankelijkheid, SEO, console, performance, responsive, interactie).
+
+**Opgelost:**
+- Leaflet (42 KB JS + CSS van unpkg) laadde bij elk bezoek als blokkerend script vóór de app-code; nu pas bij het eerste gebruik van de kaart (zelfde SRI-hashes, één keer). Mislukt het laden, dan zegt de kaart dat en blijft de tabel werken.
+- Onbekend pad gaf een lege 404 (0 bytes); nu een korte 404-pagina in dezelfde stijl met een link terug (`worker.js`, `noindex`).
+- Geen favicon (elke bezoek een 404 en consolefout op `/favicon.ico`); nu een inline SVG.
+- Geen meta-description, canonical of Open Graph; nu toegevoegd.
+- `<title>` bleef altijd gelijk; nu "naam · Rijksmonumentenverkenner" op facet- en recordpagina's.
+- Koppen sprongen van h2 naar h4/h5 (Omschrijving, Verwezen vanuit); nu h3.
+- Onbekende `#/…`-link viel stil terug op het zoekscherm; nu met melding.
+- Kruisje in filterchip, kopieerknop en ↗ waren 12–17 px; klikvlak nu 24 × 24 (WCAG 2.2, 2.5.8), iconen ongewijzigd.
+
+**Gecontroleerd, in orde:** geen dev-/previewdomeinen; `worker.js`, `todo.md`, `README.md`, `.git`, `package.json` niet publiek; geen `console.log`-resten; geen JS-fouten of -waarschuwingen; axe-core 0 overtredingen in negen toestanden; geen overflow op 320/390/768/1024/1920 px; geen dode links; alle externe links `rel="noopener"`; loading-, empty- en foutmeldingen aanwezig (time-outs sinds #7).
+
+**Open, vraagt een keuze:**
+- **Open Graph-afbeelding:** ontbreekt; vraagt een ontworpen afbeelding (1200 × 630). Nu `twitter:card=summary` zonder beeld.
+- **`robots.txt`** komt van Cloudflare (managed robots.txt met content signals), geen eigen bestand. **`sitemap.xml`** heeft weinig zin: alle pagina's zijn `#/…`-adressen, die zoekmachines niet los indexeren.
+- **Lange lijsten in het linked-data-paneel:** een geneste URI met veel inkomende links (bv. de klasse Rijksmonument) toont tot 200 rijen onder elkaar; kan een "toon meer" na ~20 gebruiken.
+- **Hulpbalk** (Doorklikken / Facetaantallen / Kaart) neemt op mobiel het grootste deel van het eerste scherm in (zie #9).
+- **Preview-builds in Cloudflare** falen bij elke PR (instelling, geen code); zie de notitie bij de laatste PR's.
+
+---
+
 ## Openstaande vragen voor volgende sessie
 
 - [ ] Hoeveel rijksmonumenten hebben 2+ `heeftOorspronkelijkeFunctie`-relaties? (punt 5, bepaalt of dat de moeite waard is)

@@ -30,6 +30,34 @@ function isAllowedQuery(query) {
   return /^(SELECT|ASK)\b/i.test(stripped);
 }
 
+// Same palette and fonts as the app, kept tiny and self-contained (no external requests).
+const NOT_FOUND_HTML = `<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pagina niet gevonden · Rijksmonumentenverkenner</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+         background: #17130d; color: #ece4d4; font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  main { max-width: 420px; }
+  p.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #ab9d84; margin: 0 0 6px; }
+  h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 24px; margin: 0 0 12px; }
+  p { color: #ab9d84; line-height: 1.5; margin: 0 0 18px; }
+  a { color: #f0c14e; }
+</style>
+</head>
+<body>
+<main>
+  <p class="code">404</p>
+  <h1>Deze pagina bestaat niet</h1>
+  <p>Het adres klopt niet (meer). Alle monumenten, gezichten, complexen en werelderfgoed vind je via de zoekpagina.</p>
+  <a href="/">Naar de Rijksmonumentenverkenner &rarr;</a>
+</main>
+</body>
+</html>`;
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -63,6 +91,11 @@ export default {
       });
     }
 
-    return env.ASSETS.fetch(request);
+    const asset = await env.ASSETS.fetch(request);
+    // Unknown paths used to return an empty 404 body: a blank page with no way back.
+    if (asset.status === 404 && (request.method === 'GET' || request.method === 'HEAD')) {
+      return new Response(NOT_FOUND_HTML, { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    return asset;
   }
 };

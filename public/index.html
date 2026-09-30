@@ -4,8 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rijksmonumentenverkenner</title>
+<meta name="description" content="Zoek in de rijksmonumenten, beschermde stads- en dorpsgezichten, complexen en werelderfgoedlocaties van Nederland, live uit het monumentenregister van de RCE. Filter op plaats, functie of provincie en bekijk de resultaten in een tabel of op de kaart.">
+<link rel="canonical" href="https://rijksmonumentenverkenner.jolietjakeblues64.workers.dev/">
+<meta name="theme-color" content="#17130d">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="nl_NL">
+<meta property="og:site_name" content="Rijksmonumentenverkenner">
+<meta property="og:title" content="Rijksmonumentenverkenner">
+<meta property="og:description" content="Zoek in de rijksmonumenten, beschermde gezichten, complexen en het werelderfgoed van Nederland, live uit het monumentenregister van de RCE.">
+<meta property="og:url" content="https://rijksmonumentenverkenner.jolietjakeblues64.workers.dev/">
+<meta name="twitter:card" content="summary">
+<!-- Favicon inline, so browsers stop asking for a /favicon.ico that doesn't exist (a 404 and a
+     console error on every visit). A pediment and three columns, in the page's own colours. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2317130d'/%3E%3Cpath d='M16 5 4 12h24z' fill='%23e0705f'/%3E%3Cpath d='M7 14h3v10H7zM14.5 14h3v10h-3zM22 14h3v10h-3z' fill='%23f0c14e'/%3E%3Cpath d='M4 25h24v3H4z' fill='%23e0705f'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
   :root {
     --paper: #17130d;
@@ -143,6 +155,8 @@
   .filter-chip button {
     background: none; border: none; padding: 2px; margin: 0; cursor: pointer; color: var(--muted);
     font: inherit; font-size: 13px; line-height: 1; border-radius: 50%;
+    /* 24x24 hit area (WCAG 2.2 target size) around the small x; the glyph itself is unchanged. */
+    min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center;
   }
   .filter-chip button:hover { color: var(--brick); background: var(--surface); }
 
@@ -211,16 +225,16 @@
   .register-link { display: inline-block; margin-top: 10px; font-family: var(--font-mono); font-size: 11.5px; }
 
   .omschrijving { margin-top: 14px; max-width: 700px; }
-  .omschrijving h4 { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
+  .omschrijving h3 { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
   .omschrijving p { font-size: 12.5px; line-height: 1.6; white-space: pre-line; margin: 0; }
 
   .ld-section { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border); max-width: 900px; }
   .ld-uri { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 11.5px; margin-bottom: 8px; }
   .ld-uri-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 4px; }
   .ld-uri code { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
-  .ld-copy { background: none; border: none; padding: 2px 3px; cursor: pointer; color: var(--muted); font-size: 11px; line-height: 1; vertical-align: middle; }
+  .ld-copy { background: none; border: none; padding: 2px 3px; cursor: pointer; color: var(--muted); font-size: 11px; line-height: 1; vertical-align: middle; min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center; }
   .ld-copy:hover, .ld-copy.done { color: var(--gold); }
-  .ld-ext { color: var(--muted); text-decoration: none; font-size: 12px; padding: 0 2px; }
+  .ld-ext { color: var(--muted); text-decoration: none; font-size: 12px; padding: 0 2px; min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; } /* 24x24 hit area, WCAG 2.2 target size */
   .ld-ext:hover { color: var(--gold); }
   .ld-panel > summary { cursor: pointer; font-family: var(--font-mono); font-size: 11.5px; color: var(--gold); }
   .ld-panel.ld-nested { display: inline; }
@@ -488,7 +502,6 @@
 
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 (function () {
   'use strict';
@@ -1361,6 +1374,28 @@
   }
 
   var leafletMap = null;
+  // Leaflet (42 KB gzipped JS + CSS, from unpkg) is only needed on the Kaart tab. It used to be
+  // a plain blocking script tag before the app code, so every visit -- map or not -- waited for
+  // unpkg before the search page could run. Now it's fetched on first map use, with the same
+  // Subresource Integrity hashes, and the promise is kept so it loads once.
+  var leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise(function (resolve, reject) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      css.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='; css.crossOrigin = '';
+      document.head.appendChild(css);
+      var js = document.createElement('script');
+      js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      js.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='; js.crossOrigin = '';
+      js.onload = function () { resolve(); };
+      js.onerror = function () { leafletPromise = null; reject(new Error('leaflet')); }; // next map visit retries
+      document.head.appendChild(js);
+    });
+    return leafletPromise;
+  }
   var leafletShapes = []; // markers (Rijksmonument) or polygons (Gezicht/Werelderfgoed) -- same map instance, one at a time
   function ensureLeafletMap() {
     if (leafletMap) return;
@@ -1436,11 +1471,12 @@
     var ids = state.lastRows.map(function (r) { return r[idField].value; });
     var bt = state.browseType;
     var query = bt === 'rijksmonument' ? buildMapPointsQuery(ids) : bt === 'gezicht' ? buildGezichtMapQuery(ids) : buildWerelderfgoedMapQuery(ids);
-    runQuery(query).then(function (rows) {
-      state.mapPoints = rows;
-      renderMap(rows);
-    }).catch(function () {
-      setMapStatus('Kon kaartgegevens niet laden.');
+    Promise.all([runQuery(query), loadLeaflet().catch(function () { return 'noLeaflet'; })]).then(function (res) {
+      if (res[1] === 'noLeaflet') { setMapStatus('De kaart kon niet worden geladen. Probeer het later opnieuw; de tabel werkt wel.'); return; }
+      state.mapPoints = res[0];
+      renderMap(res[0]);
+    }).catch(function (err) {
+      setMapStatus(errorText(err, 'Kon kaartgegevens niet laden.'));
     });
   }
 
@@ -1752,7 +1788,7 @@
       html += '<p class="no-val">Geen gegevens over deze URI in de RCE-dataset.</p>';
     }
     if (inc.length) {
-      html += '<h5 class="ld-h">Verwezen vanuit</h5><table class="ld-table"><tbody>' + inc.map(function (r) {
+      html += '<h3 class="ld-h">Verwezen vanuit</h3><table class="ld-table"><tbody>' + inc.map(function (r) {
         var s = r.s.type === 'uri' ? ldValueHtml(r.s.value, ldLabel(r, 'sl'), depth) : '<span class="no-val">[anonieme knoop]</span>';
         return '<tr>' + propCell(r) + '<td>' + s + '</td></tr>';
       }).join('') + '</tbody></table>';
@@ -1820,7 +1856,7 @@
   function omschrijvingHtml(row) {
     var tekst = row.omschrijvingL ? row.omschrijvingL.value : null;
     if (!tekst) return '';
-    return '<div class="omschrijving"><h4>Omschrijving</h4><p>' + esc(tekst) + '</p></div>';
+    return '<div class="omschrijving"><h3>Omschrijving</h3><p>' + esc(tekst) + '</p></div>';
   }
 
   function detailRowHtmlRijksmonument(row, colspan) {
@@ -2308,12 +2344,13 @@
     document.getElementById('entityLd').innerHTML = ldSectionHtml(id);
     document.getElementById('entityThead').innerHTML = ENTITY_THEAD_HTML[entityType] || ENTITY_THEAD_HTML.rijksmonument;
     resolveEntityLabel(dim, id).then(function (label) {
-      if (state.viewDim === dim && state.viewId === id) document.getElementById('entityName').textContent = label;
+      if (state.viewDim === dim && state.viewId === id) { document.getElementById('entityName').textContent = label; setPageTitle(label); }
     });
     loadEntityPage();
   }
   function closeEntityPage() {
     state.view = 'browse'; state.viewDim = null; state.viewId = null;
+    setPageTitle(null);
     document.getElementById('layout').hidden = false;
     document.getElementById('entityView').hidden = true;
     history.replaceState(null, '', location.pathname + location.search + browseHash());
@@ -2355,6 +2392,7 @@
       if (!row[subjField]) row[subjField] = { value: id };
       var naam = row.naamL && row.naamL.value ? row.naamL.value : '(naam onbekend)';
       document.getElementById('recordName').textContent = naam;
+      setPageTitle(naam);
       document.getElementById('recordBody').innerHTML = RECORD_DETAIL_ROW_HTML[type](row, 1);
     }).catch(function (err) {
       if (token !== recordReqToken) return;
@@ -2363,6 +2401,7 @@
   }
   function closeRecordPage() {
     state.view = 'browse'; state.recordType = null; state.recordId = null;
+    setPageTitle(null);
     document.getElementById('layout').hidden = false;
     document.getElementById('recordView').hidden = true;
     history.replaceState(null, '', location.pathname + location.search + browseHash());
@@ -2460,6 +2499,11 @@
   }
 
   // ---------- boot / wiring ----------
+
+  // One title per view, so a shared or bookmarked facet/record link (and a browser tab) says
+  // what it is instead of always "Rijksmonumentenverkenner".
+  var BASE_TITLE = document.title;
+  function setPageTitle(part) { document.title = part ? part + ' · ' + BASE_TITLE : BASE_TITLE; }
 
   function showBootNotice(message) {
     var el = document.getElementById('bootNotice');
@@ -2788,6 +2832,15 @@
       if (state.view === 'entity') closeEntityPage();
       else if (state.view === 'record') closeRecordPage();
       if (differs) applyBrowseHash(zm[1], zm[2]);
+      return;
+    }
+    if (/^#\//.test(location.hash)) {
+      // A #/... address none of the routes above knows (mistyped or from an older version):
+      // say so, like an undecodable value does, instead of silently showing the search.
+      showBootNotice('Deze link kon niet worden geopend (onbekend adres) — je ziet nu het gewone zoekscherm.');
+      if (state.view === 'entity') closeEntityPage();
+      else if (state.view === 'record') closeRecordPage();
+      history.replaceState(null, '', location.pathname + location.search + browseHash());
       return;
     }
     if (!fromBoot) {

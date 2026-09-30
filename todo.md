@@ -100,7 +100,14 @@ Oorspronkelijke notitie:
 
 ---
 
-## 9. Intro herschrijven, jargon naar "Over deze verkenner"
+## 9. ✅ Intro herschrijven, jargon naar "Over deze verkenner" (2026-09-30)
+
+**Geïmplementeerd:** de intro is nu publieksgericht en zonder vaktermen (35 i.p.v. 48 woorden): wat je kunt vinden (rijksmonumenten, gezichten, complexen, werelderfgoed) en wat je kunt doen (zoeken op naam/nummer, verfijnen, tabel of kaart). De technische achtergrond staat in een inklapbaar blok "Over deze verkenner" direct eronder: live uit de linked-data-dienst van de RCE (CHO, SPARQL, geen cache), het datamodel (Cultureel Erfgoed Ontologie), dat het een prototype is en het Monumentenregister leidend, en het zusje Rijkscollectie Verkenner. De meta-regel "Live SPARQL tegen …" en het Engelse label "faceted search" zijn opgegaan in dat blok.
+
+Gemeten op 390 × 844: intro 132 → 94 px, zoekveld begint op 603 i.p.v. 646 px. Het grootste deel van het eerste scherm is nu de hulpbalk (Doorklikken / Facetaantallen / Kaart) — bewust laten staan, want dat is uitleg vóór bezoekers, niet jargon; kan later eventueel ook inklapbaar. Uitklapblok: eerste tabstop, opent met Enter, axe-core 0 overtredingen.
+
+Oorspronkelijke notitie:
+
 
 **Doel:** de huidige intro spreekt ontwikkelaars aan (SPARQL, CEO, ontologie, graph) en neemt in een smalle weergave bijna het hele eerste scherm in. Reviewer stelt voor: korte, publieksgerichte intro bovenaan, technische uitleg naar een aparte sectie/pagina.
 
